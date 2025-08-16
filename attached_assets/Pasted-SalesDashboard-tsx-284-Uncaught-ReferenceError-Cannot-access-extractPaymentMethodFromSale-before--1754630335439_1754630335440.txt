@@ -1,0 +1,30 @@
+SalesDashboard.tsx:284 Uncaught ReferenceError: Cannot access 'extractPaymentMethodFromSale' before initialization
+    at SalesDashboard.tsx:284:31
+    at Array.filter (<anonymous>)
+    at SalesDashboard (SalesDashboard.tsx:214:6)
+chunk-W6L2VRDA.js?v=30e1628b:14032 The above error occurred in the <SalesDashboard> component:
+
+    at SalesDashboard (https://ac4f79b0-b367-45e4-bc58-0e2bb6d06d86-00-jusvt8ketc6r.worf.replit.dev/src/components/sales/SalesDashboard.tsx:21:27)
+    at div
+    at main
+    at div
+    at div
+    at Home (https://ac4f79b0-b367-45e4-bc58-0e2bb6d06d86-00-jusvt8ketc6r.worf.replit.dev/src/components/pages/dashboard.tsx:3150:19)
+    at PrivateRoute (https://ac4f79b0-b367-45e4-bc58-0e2bb6d06d86-00-jusvt8ketc6r.worf.replit.dev/src/App.tsx:22:25)
+    at RenderedRoute (https://ac4f79b0-b367-45e4-bc58-0e2bb6d06d86-00-jusvt8ketc6r.worf.replit.dev/node_modules/.vite/deps/react-router-dom.js?v=30e1628b:3989:5)
+    at Routes (https://ac4f79b0-b367-45e4-bc58-0e2bb6d06d86-00-jusvt8ketc6r.worf.replit.dev/node_modules/.vite/deps/react-router-dom.js?v=30e1628b:4423:5)
+    at AppRoutes
+    at Suspense
+    at AuthProvider (https://ac4f79b0-b367-45e4-bc58-0e2bb6d06d86-00-jusvt8ketc6r.worf.replit.dev/supabase/auth.tsx:14:32)
+    at QueryClientProvider (https://ac4f79b0-b367-45e4-bc58-0e2bb6d06d86-00-jusvt8ketc6r.worf.replit.dev/node_modules/.vite/deps/chunk-ENT363IH.js?v=30e1628b:2934:3)
+    at QueryProvider (https://ac4f79b0-b367-45e4-bc58-0e2bb6d06d86-00-jusvt8ketc6r.worf.replit.dev/src/providers/QueryProvider.tsx:14:33)
+    at App
+    at Router (https://ac4f79b0-b367-45e4-bc58-0e2bb6d06d86-00-jusvt8ketc6r.worf.replit.dev/node_modules/.vite/deps/react-router-dom.js?v=30e1628b:4366:15)
+    at BrowserRouter (https://ac4f79b0-b367-45e4-bc58-0e2bb6d06d86-00-jusvt8ketc6r.worf.replit.dev/node_modules/.vite/deps/react-router-dom.js?v=30e1628b:5109:5)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+chunk-W6L2VRDA.js?v=30e1628b:9129 Uncaught ReferenceError: Cannot access 'extractPaymentMethodFromSale' before initialization
+    at SalesDashboard.tsx:284:31
+    at Array.filter (<anonymous>)
+    at SalesDashboard (SalesDashboard.tsx:214:6)

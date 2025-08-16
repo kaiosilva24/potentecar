@@ -1,0 +1,20 @@
+# Este arquivo define os proprietários de diferentes partes do código
+# Os proprietários serão automaticamente solicitados para revisão quando alguém abrir um pull request
+
+# Proprietários padrão para todo o repositório
+* @seu-usuario
+
+# Proprietários específicos para diferentes diretórios
+/src/components/financial/ @especialista-financeiro
+/src/components/stock/ @especialista-estoque
+/src/components/dashboard/ @especialista-dashboard
+
+# Arquivos de configuração
+*.json @administrador-configuracoes
+*.js @administrador-configuracoes
+*.ts @administrador-configuracoes
+
+# Documentação
+*.md @documentador
+
+# Substitua os nomes de usuário acima pelos nomes de usuário reais do GitHub dos membros da sua equipe

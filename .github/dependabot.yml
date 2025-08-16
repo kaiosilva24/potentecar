@@ -1,0 +1,45 @@
+version: 2
+updates:
+  # Manter dependências npm atualizadas
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    # Atribuir revisores para pull requests
+    reviewers:
+      - "seu-usuario"
+    # Atribuir responsáveis para pull requests
+    assignees:
+      - "seu-usuario"
+    # Rótulos em pull requests para dependências npm
+    labels:
+      - "dependencies"
+      - "npm"
+    # Permitir atualizações de versões
+    versioning-strategy: auto
+    # Agrupar atualizações de dependências
+    groups:
+      # Agrupar atualizações de dependências de produção
+      production-dependencies:
+        dependency-type: "production"
+      # Agrupar atualizações de dependências de desenvolvimento
+      development-dependencies:
+        dependency-type: "development"
+
+  # Manter dependências do GitHub Actions atualizadas
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    # Atribuir revisores para pull requests
+    reviewers:
+      - "seu-usuario"
+    # Atribuir responsáveis para pull requests
+    assignees:
+      - "seu-usuario"
+    # Rótulos em pull requests para dependências do GitHub Actions
+    labels:
+      - "dependencies"
+      - "github-actions"

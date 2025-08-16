@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Teste Cálculo Estoque</title>
+</head>
+<body>
+    <h1>Teste de Cálculo do Valor Total do Estoque</h1>
+    <button onclick="testStockCalculation()">Testar Cálculo</button>
+    <div id="result"></div>
+
+    <script>
+        async function testStockCalculation() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Calculando...';
+            
+            try {
+                // Simular chamada para o dataManager
+                const response = await fetch('/api/test-stock-value');
+                const result = await response.json();
+                
+                resultDiv.innerHTML = `
+                    <h2>Resultado:</h2>
+                    <p>Valor calculado: R$ ${result.value.toFixed(2)}</p>
+                    <p>Timestamp: ${new Date(result.timestamp).toLocaleString()}</p>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `Erro: ${error.message}`;
+                console.error('Erro ao testar cálculo:', error);
+            }
+        }
+    </script>
+</body>
+</html>
