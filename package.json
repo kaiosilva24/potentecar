@@ -1,19 +1,8 @@
 {
-  "name": "potentecar-sistema-gestao",
+  "name": "starter",
   "private": true,
-  "version": "1.0.0",
+  "version": "0.0.0",
   "type": "module",
-  "description": "Sistema completo de gestão empresarial para Potente Car - React + TypeScript + Supabase",
-  "author": "Kaio Silva",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/kaiosilva24/potentecar.git"
-  },
-  "homepage": "https://github.com/kaiosilva24/potentecar#readme",
-  "bugs": {
-    "url": "https://github.com/kaiosilva24/potentecar/issues"
-  },
-  "keywords": ["react", "typescript", "supabase", "gestao", "dashboard", "sistema-empresarial"],
   "scripts": {
     "dev": "vite",
     "build": "vite build",

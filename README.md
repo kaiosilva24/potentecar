@@ -79,8 +79,8 @@ Um sistema completo de gestão empresarial desenvolvido em React + TypeScript co
 
 ### 1. Clone o repositório
 ```bash
-git clone https://github.com/kaiosilva24/potentecar.git
-cd potentecar
+git clone https://github.com/seu-usuario/sistema-gestao.git
+cd sistema-gestao
 ```
 
 ### Ou após criar seu próprio repositório:
@@ -89,7 +89,7 @@ cd potentecar
 git init
 
 # Adicione o repositório remoto
-git remote add origin https://github.com/kaiosilva24/potentecar.git
+git remote add origin https://github.com/seu-usuario/seu-repositorio.git
 
 # Adicione todos os arquivos
 git add .
@@ -278,8 +278,8 @@ Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para de
 Se você encontrar algum problema ou tiver dúvidas:
 
 1. Verifique a [documentação](docs/)
-2. Procure em [Issues existentes](https://github.com/kaiosilva24/potentecar/issues)
-3. Crie uma [nova issue](https://github.com/kaiosilva24/potentecar/issues/new)
+2. Procure em [Issues existentes](https://github.com/seu-usuario/sistema-gestao/issues)
+3. Crie uma [nova issue](https://github.com/seu-usuario/sistema-gestao/issues/new)
 
 ## 📈 Roadmap
 
@@ -312,4 +312,4 @@ Se você encontrar algum problema ou tiver dúvidas:
 
 ---
 
-**Desenvolvido com ❤️ por Kaio Silva - Potente Car**
+**Desenvolvido com ❤️ por [Seu Nome]**
