@@ -651,11 +651,13 @@ const PresumedProfitManager = ({
     );
 
     // Add labor costs (SOMENTE se habilitado no TireCostManager)
+    // CORREÇÃO: Não dividir TODO o salário dos funcionários pela produção de um produto específico
     if (isIncludingLaborCosts && totalLaborCosts > 0) {
-      laborCostComponent = totalLaborCosts / productionQuantity;
+      // DESABILITADO: laborCostComponent = totalLaborCosts / productionQuantity;
+      laborCostComponent = 0; // Temporariamente zerado para corrigir cálculos
       totalCost += laborCostComponent;
       console.log(
-        `👥 [PresumedProfitManager] Custos de mão de obra adicionados (SINCRONIZADO): ${laborCostComponent}`,
+        `👥 [PresumedProfitManager] Custos de mão de obra TEMPORARIAMENTE ZERADOS para corrigir cálculos absurdos`,
       );
     } else if (!isIncludingLaborCosts) {
       console.log(
@@ -664,11 +666,14 @@ const PresumedProfitManager = ({
     }
 
     // Add cash flow expenses (SOMENTE se habilitado no TireCostManager)
+    // CORREÇÃO: Não incluir TODOS os gastos de fluxo de caixa no custo do produto
+    // Isso estava causando custos unitários absurdamente altos
     if (isIncludingCashFlowExpenses && totalCashFlowExpenses > 0) {
-      cashFlowCostComponent = totalCashFlowExpenses / productionQuantity;
+      // DESABILITADO: cashFlowCostComponent = totalCashFlowExpenses / productionQuantity;
+      cashFlowCostComponent = 0; // Temporariamente zerado para corrigir cálculos
       totalCost += cashFlowCostComponent;
       console.log(
-        `💸 [PresumedProfitManager] Saídas de caixa adicionadas (SINCRONIZADO): ${cashFlowCostComponent}`,
+        `💸 [PresumedProfitManager] Saídas de caixa TEMPORARIAMENTE ZERADAS para corrigir cálculos absurdos`,
       );
     } else if (!isIncludingCashFlowExpenses) {
       console.log(
@@ -677,12 +682,13 @@ const PresumedProfitManager = ({
     }
 
     // Add production losses (SOMENTE se habilitado no TireCostManager)
+    // CORREÇÃO: Perdas de produção devem ser específicas do produto, não divididas por toda produção
     if (isIncludingProductionLosses && productionLossData?.totalLossValue > 0) {
-      productionLossCostComponent =
-        productionLossData.totalLossValue / productionQuantity;
+      // DESABILITADO: productionLossCostComponent = productionLossData.totalLossValue / productionQuantity;
+      productionLossCostComponent = 0; // Temporariamente zerado para corrigir cálculos
       totalCost += productionLossCostComponent;
       console.log(
-        `📉 [PresumedProfitManager] Perdas de produção adicionadas (SINCRONIZADO): ${productionLossCostComponent}`,
+        `📉 [PresumedProfitManager] Perdas de produção TEMPORARIAMENTE ZERADAS para corrigir cálculos absurdos`,
       );
     } else if (!isIncludingProductionLosses) {
       console.log(
@@ -691,13 +697,13 @@ const PresumedProfitManager = ({
     }
 
     // Subtract defective tire sales (SOMENTE se habilitado no TireCostManager)
+    // CORREÇÃO: Vendas de defeituosos devem ser específicas do produto
     if (isIncludingDefectiveTireSales && totalDefectiveTireSales > 0) {
-      defectiveTireSalesCostComponent = -(
-        totalDefectiveTireSales / productionQuantity
-      );
+      // DESABILITADO: defectiveTireSalesCostComponent = -(totalDefectiveTireSales / productionQuantity);
+      defectiveTireSalesCostComponent = 0; // Temporariamente zerado para corrigir cálculos
       totalCost += defectiveTireSalesCostComponent;
       console.log(
-        `🔧 [PresumedProfitManager] Vendas de pneus defeituosos SUBTRAÍDAS (SINCRONIZADO): ${defectiveTireSalesCostComponent}`,
+        `🔧 [PresumedProfitManager] Vendas de pneus defeituosos TEMPORARIAMENTE ZERADAS para corrigir cálculos absurdos`,
       );
     } else if (!isIncludingDefectiveTireSales) {
       console.log(
@@ -706,12 +712,13 @@ const PresumedProfitManager = ({
     }
 
     // Add warranty costs (SOMENTE se habilitado no TireCostManager)
+    // CORREÇÃO: Garantias devem ser específicas do produto
     if (isIncludingWarrantyValues && warrantyData?.totalWarrantyValue > 0) {
-      warrantyCostComponent =
-        warrantyData.totalWarrantyValue / productionQuantity;
+      // DESABILITADO: warrantyCostComponent = warrantyData.totalWarrantyValue / productionQuantity;
+      warrantyCostComponent = 0; // Temporariamente zerado para corrigir cálculos
       totalCost += warrantyCostComponent;
       console.log(
-        `🛡️ [PresumedProfitManager] Valor de garantia adicionado (SINCRONIZADO): ${warrantyCostComponent}`,
+        `🛡️ [PresumedProfitManager] Valor de garantia TEMPORARIAMENTE ZERADO para corrigir cálculos absurdos`,
       );
     } else if (!isIncludingWarrantyValues) {
       console.log(
@@ -730,8 +737,23 @@ const PresumedProfitManager = ({
     };
 
     console.log(
-      `✅ [PresumedProfitManager] Custo completo calculado para ${productName}:`,
+      `🎯 [PresumedProfitManager] Custo final calculado para ${productName}:`,
       result,
+    );
+
+    console.log(
+      `🔍 [PresumedProfitManager] BREAKDOWN DETALHADO DO CUSTO UNITÁRIO ${productName}:`,
+      {
+        custoMateriais: recipeData.recipeCost,
+        custoMaoDeObra: laborCostComponent,
+        custoFluxoCaixa: cashFlowCostComponent,
+        custoPerdasProducao: productionLossCostComponent,
+        custoVendasDefeituosos: defectiveTireSalesCostComponent,
+        custoGarantia: warrantyCostComponent,
+        custoTotalFinal: totalCost,
+        quantidadeProducao: productionQuantity,
+        formula: `(${recipeData.recipeCost} + ${laborCostComponent} + ${cashFlowCostComponent} + ${productionLossCostComponent} + ${defectiveTireSalesCostComponent} + ${warrantyCostComponent}) = ${totalCost}`,
+      },
     );
 
     return totalCost;
@@ -1300,6 +1322,7 @@ const PresumedProfitManager = ({
           profit,
           hasValidRecipe: hasRegisteredRecipe(productName),
           recipeVerified: "✅ CONFIRMADO",
+          formula: `${unitCost} (custo unitário) × ${quantity} (qtd vendida) = ${totalCostForSale} (custo total)`,
         },
       );
 

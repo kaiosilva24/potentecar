@@ -489,6 +489,7 @@ const RawMaterialStock = ({
                 min="0"
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
+                onWheel={(e) => e.currentTarget.blur()}
                 className="bg-factory-700/50 border-tire-600/30 text-white placeholder:text-tire-400"
                 placeholder="Digite a quantidade"
               />
@@ -504,6 +505,7 @@ const RawMaterialStock = ({
                 min="0"
                 value={unitPrice}
                 onChange={(e) => setUnitPrice(e.target.value)}
+                onWheel={(e) => e.currentTarget.blur()}
                 className="bg-factory-700/50 border-tire-600/30 text-white placeholder:text-tire-400"
                 placeholder="Digite o preço por unidade"
               />
@@ -588,6 +590,7 @@ const RawMaterialStock = ({
                         min="0"
                         value={minLevel}
                         onChange={(e) => setMinLevel(e.target.value)}
+                        onWheel={(e) => e.currentTarget.blur()}
                         className="bg-factory-700/50 border-tire-600/30 text-white placeholder:text-tire-400"
                         placeholder="Digite o nível mínimo de estoque"
                       />

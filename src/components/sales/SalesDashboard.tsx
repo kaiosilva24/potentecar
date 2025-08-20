@@ -1932,6 +1932,11 @@ const SalesDashboard = ({
       setProductSearch(product.name);
     }
     setShowProductDropdown(false);
+    
+    // Limpar o campo de busca após seleção
+    setTimeout(() => {
+      setProductSearch("");
+    }, 100);
 
     // Se o modo multi-produto estiver ativo e não for garantia, adicionar automaticamente à lista de produtos selecionados
     if (isMultiProductMode && productType !== "warranty") {

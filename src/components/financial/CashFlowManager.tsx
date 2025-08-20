@@ -1033,7 +1033,7 @@ const CashFlowManager = ({
                         }}
                       >
                         <SelectTrigger className="bg-factory-600/50 border-tire-600/30 text-white">
-                          <SelectValue placeholder="Selecione um produto..." />
+                          <SelectValue placeholder={selectedProductId ? "" : "Selecione um produto..."} />
                         </SelectTrigger>
                         <SelectContent className="bg-factory-800 border-tire-600/30 max-h-60">
                           {getAvailableProducts().map((product) => (

@@ -832,6 +832,7 @@ const FinalProductsStock: React.FC<FinalProductsStockProps> = ({ isLoading = fal
                     min="0"
                     value={minLevel}
                     onChange={(e) => setMinLevel(e.target.value)}
+                    onWheel={(e) => e.currentTarget.blur()}
                     placeholder="Ex: 5"
                     className="bg-factory-700/50 border-tire-600/30 text-white"
                   />
@@ -1033,6 +1034,7 @@ const FinalProductsStock: React.FC<FinalProductsStockProps> = ({ isLoading = fal
                         min="0"
                         value={product.editableQuantity}
                         onChange={(e) => handleQuantityChange(product.productId, e.target.value)}
+                        onWheel={(e) => e.currentTarget.blur()}
                         className="bg-factory-700/50 border-tire-600/30 text-white h-10"
                       />
                     ) : (

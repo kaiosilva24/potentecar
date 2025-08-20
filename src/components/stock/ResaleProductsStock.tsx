@@ -710,13 +710,8 @@ const ResaleProductsStock = ({ isLoading = false }: ResaleProductsStockProps) =>
                     min="1"
                     step="1"
                     value={quantity}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      // Only allow positive integers
-                      if (value === '' || (/^\d+$/.test(value) && parseInt(value) > 0)) {
-                        setQuantity(value);
-                      }
-                    }}
+                    onChange={(e) => setQuantity(e.target.value)}
+                    onWheel={(e) => e.currentTarget.blur()}
                     className="bg-factory-700/50 border-tire-600/30 text-white"
                     placeholder="0"
                   />
@@ -731,13 +726,8 @@ const ResaleProductsStock = ({ isLoading = false }: ResaleProductsStockProps) =>
                     step="0.01"
                     min="0"
                     value={unitPrice}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      // Allow empty, decimal numbers >= 0
-                      if (value === '' || (/^\d*\.?\d*$/.test(value) && parseFloat(value) >= 0)) {
-                        setUnitPrice(value);
-                      }
-                    }}
+                    onChange={(e) => setUnitPrice(e.target.value)}
+                    onWheel={(e) => e.currentTarget.blur()}
                     className="bg-factory-700/50 border-tire-600/30 text-white"
                     placeholder="0.00"
                   />
@@ -799,23 +789,18 @@ const ResaleProductsStock = ({ isLoading = false }: ResaleProductsStockProps) =>
               </div>
 
               <div>
-                  <Label>Nível Mínimo</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={minLevel}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      // Only allow non-negative integers
-                      if (value === '' || (/^\d+$/.test(value) && parseInt(value) >= 0)) {
-                        setMinLevel(value);
-                      }
-                    }}
-                    className="bg-factory-700/50 border-tire-600/30 text-white"
-                    placeholder="0"
-                  />
-                </div>
+                <Label>Nível Mínimo</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={minLevel}
+                  onChange={(e) => setMinLevel(e.target.value)}
+                  onWheel={(e) => e.currentTarget.blur()}
+                  className="bg-factory-700/50 border-tire-600/30 text-white"
+                  placeholder="0"
+                />
+              </div>
 
               <div className="flex justify-end gap-2">
                 <Button

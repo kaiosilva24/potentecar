@@ -169,6 +169,11 @@ interface TireAnalysis {
     defectiveTireSalesCost: number;
     warrantyCost: number;
     total: number;
+    calculationDetails?: {
+      totalCashFlowExpenses: number;
+      totalProductionQuantity: number;
+      cashFlowPerTire: number;
+    };
   };
 }
 
@@ -980,7 +985,8 @@ const TireCostManager = ({
     recipeCost: number,
     productionLossData: any,
     warrantyData: any,
-    options: CostCalculationOptions
+    options: CostCalculationOptions,
+    allProductsData: any[] = []
   ) => {
     console.log(
       `🧮 [TireCostManager] Calculando custo customizado para ${productName}:`,
@@ -1000,11 +1006,14 @@ const TireCostManager = ({
     let defectiveTireSalesCostComponent = 0;
     let warrantyCostComponent = 0;
 
-    // Production quantity for division (use the higher of produced or sold)
-    const productionQuantity = Math.max(totalProduced, totalSold, 1);
+    // CORREÇÃO: Usar quantidade TOTAL de pneus produzidos (todos os produtos)
+    const totalProductionQuantity = allProductsData.length > 0 
+      ? allProductsData.reduce((sum, tire) => sum + (tire.totalProduced || 0), 0)
+      : Math.max(totalProduced, totalSold, 1);
+    const productionQuantity = Math.max(totalProductionQuantity, 1);
 
     console.log(
-      `📊 [TireCostManager] Quantidade de produção para divisão: ${productionQuantity}`
+      `📊 [TireCostManager] Quantidade TOTAL de produção para divisão: ${productionQuantity} (antes era individual: ${Math.max(totalProduced, totalSold, 1)})`
     );
 
     // Calculate total costs for optional components
@@ -1128,6 +1137,13 @@ const TireCostManager = ({
         defectiveTireSalesCost: defectiveTireSalesCostComponent,
         warrantyCost: warrantyCostComponent,
         total: totalCost,
+        calculationDetails: {
+          totalCashFlowExpenses: cashFlowEntries
+            .filter((entry) => entry.type === "expense")
+            .reduce((total, entry) => total + entry.amount, 0),
+          totalProductionQuantity: productionQuantity,
+          cashFlowPerTire: cashFlowCostComponent
+        }
       },
     };
 
@@ -1435,7 +1451,8 @@ const TireCostManager = ({
           analysis.recipeCostPerTire,
           analysis.lossDetails,
           analysis.warrantyDetails,
-          costOptions
+          costOptions,
+          Array.from(productAnalysis.values())
         );
 
         analysis.costPerTire = customCost.totalCost;
@@ -3052,15 +3069,22 @@ const TireCostManager = ({
                                 </div>
 
                                 {costOptions.includeCashFlowExpenses && (
-                                  <div className="flex justify-between">
-                                    <span className="text-tire-300 text-lg">
-                                      Saídas de Caixa:
-                                    </span>
-                                    <span className="text-neon-purple font-medium text-lg">
-                                      {formatCurrency(
-                                        selectedProductAnalysis.cashFlowCostPerTire
-                                      )}
-                                    </span>
+                                  <div className="space-y-1">
+                                    <div className="flex justify-between">
+                                      <span className="text-tire-300 text-lg">
+                                        Saídas de Caixa:
+                                      </span>
+                                      <span className="text-neon-purple font-medium text-lg">
+                                        {formatCurrency(
+                                          selectedProductAnalysis.cashFlowCostPerTire
+                                        )}
+                                      </span>
+                                    </div>
+                                    {selectedProductAnalysis.costBreakdown?.calculationDetails && (
+                                      <div className="text-xs text-tire-400 text-right">
+                                        {formatCurrency(selectedProductAnalysis.costBreakdown.calculationDetails.totalCashFlowExpenses)} ÷ {selectedProductAnalysis.costBreakdown.calculationDetails.totalProductionQuantity} pneus = {formatCurrency(selectedProductAnalysis.costBreakdown.calculationDetails.cashFlowPerTire)}
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                                 {costOptions.includeProductionLosses && (
