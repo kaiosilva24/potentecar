@@ -7,6 +7,7 @@ import ProductForm from "../financial/ProductForm";
 import ResaleProductForm from "../financial/ResaleProductForm";
 import SupplierForm from "../financial/SupplierForm";
 import SalespersonForm from "./SalespersonForm";
+import { RawMaterial } from "@/types/financial";
 import {
   useMaterials,
   useEmployees,
@@ -82,6 +83,27 @@ const RegistrationDashboard = ({
     isLoading: salespeopleLoading,
   } = useSalespeople();
   const { removeStockItemByItemId } = useStockItems();
+
+  // Edit handler for materials
+  const handleEditMaterial = async (
+    materialId: string,
+    updatedData: { name: string; unit: RawMaterial["unit"] },
+  ) => {
+    console.log(
+      `✏️ [RegistrationDashboard] Editando matéria-prima:`,
+      {
+        id: materialId,
+        updatedData,
+      },
+    );
+
+    try {
+      await updateMaterial(materialId, updatedData);
+      console.log(`✅ [RegistrationDashboard] Matéria-prima editada com sucesso`);
+    } catch (error) {
+      console.error(`❌ [RegistrationDashboard] Erro ao editar matéria-prima:`, error);
+    }
+  };
 
   // Archive handlers that update the database
   const handleArchiveMaterial = async (materialId: string) => {
@@ -437,6 +459,7 @@ const RegistrationDashboard = ({
             materials={materials}
             customUnits={customUnits}
             onSubmit={addMaterial}
+            onEdit={handleEditMaterial}
             onArchive={handleArchiveMaterial}
             onDelete={handleDeleteMaterial}
             onAddCustomUnit={addCustomUnit}

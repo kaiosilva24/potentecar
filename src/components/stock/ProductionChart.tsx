@@ -60,6 +60,10 @@ const ProductionChart = ({
   const [selectedYear, setSelectedYear] = useState("");
   const [selectedMonth, setSelectedMonth] = useState("");
 
+  // Estados para controle de ordenação
+  const [sortBy, setSortBy] = useState<string>("name");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+
 
   // Estados para configuração de cores
   const [showColorSettings, setShowColorSettings] = useState(false);
@@ -232,9 +236,35 @@ const ProductionChart = ({
       productData.productionDays = uniqueDates.size;
     });
 
-    // Converter para array e ordenar por quantidade produzida (maior para menor)
+    // Converter para array e aplicar ordenação baseada nos estados
     const chartData = Array.from(groupedData.values())
-      .sort((a, b) => b.totalProduced - a.totalProduced)
+      .sort((a, b) => {
+        let comparison = 0;
+        
+        switch (sortBy) {
+          case "name":
+            comparison = a.productName.localeCompare(b.productName);
+            break;
+          case "totalProduced":
+            comparison = a.totalProduced - b.totalProduced;
+            break;
+          case "totalLosses":
+            comparison = a.totalLosses - b.totalLosses;
+            break;
+          case "averagePerDay":
+            const avgA = a.productionDays > 0 ? a.totalProduced / a.productionDays : 0;
+            const avgB = b.productionDays > 0 ? b.totalProduced / b.productionDays : 0;
+            comparison = avgA - avgB;
+            break;
+          case "productionDays":
+            comparison = a.productionDays - b.productionDays;
+            break;
+          default:
+            comparison = a.productName.localeCompare(b.productName);
+        }
+        
+        return sortOrder === "asc" ? comparison : -comparison;
+      })
       .map((item) => {
         return {
           ...item,
@@ -739,16 +769,60 @@ const ProductionChart = ({
         </Card>
       </div>
 
-      {/* Filtros */}
+      {/* Filtros e Ordenação */}
       <div className="mb-6 p-4 bg-factory-700/30 rounded-lg border border-tire-600/20">
         <div className="flex items-center gap-2 mb-3">
           <Filter className="h-4 w-4 text-neon-blue" />
           <Label className="text-tire-200 font-medium">
-            Filtros de Período
+            Filtros e Ordenação
           </Label>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+          {/* Ordenar Por */}
+          <div className="space-y-2">
+            <Label className="text-tire-300 text-sm">Ordenar por:</Label>
+            <Select value={sortBy} onValueChange={setSortBy}>
+              <SelectTrigger className="bg-factory-700/50 border-tire-600/30 text-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-factory-800 border-tire-600/30">
+                <SelectItem value="name" className="text-white hover:bg-tire-700/50">
+                  Nome
+                </SelectItem>
+                <SelectItem value="totalProduced" className="text-white hover:bg-tire-700/50">
+                  Quantidade Produzida
+                </SelectItem>
+                <SelectItem value="totalLosses" className="text-white hover:bg-tire-700/50">
+                  Total de Perdas
+                </SelectItem>
+                <SelectItem value="averagePerDay" className="text-white hover:bg-tire-700/50">
+                  Média por Dia
+                </SelectItem>
+                <SelectItem value="productionDays" className="text-white hover:bg-tire-700/50">
+                  Dias de Produção
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Ordem */}
+          <div className="space-y-2">
+            <Label className="text-tire-300 text-sm">Ordem:</Label>
+            <Select value={sortOrder} onValueChange={(value: "asc" | "desc") => setSortOrder(value)}>
+              <SelectTrigger className="bg-factory-700/50 border-tire-600/30 text-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-factory-800 border-tire-600/30">
+                <SelectItem value="asc" className="text-white hover:bg-tire-700/50">
+                  Crescente
+                </SelectItem>
+                <SelectItem value="desc" className="text-white hover:bg-tire-700/50">
+                  Decrescente
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           {/* Tipo de Filtro */}
           <div className="space-y-2">
             <Label className="text-tire-300 text-sm">Período:</Label>

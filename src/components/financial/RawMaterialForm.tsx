@@ -37,12 +37,17 @@ import {
   Settings,
   X,
   Trash2,
+  Edit,
 } from "lucide-react";
 import { RawMaterial } from "@/types/financial";
 
 interface RawMaterialFormProps {
   onSubmit?: (
     material: Omit<RawMaterial, "id" | "created_at" | "quantity">,
+  ) => void;
+  onEdit?: (
+    materialId: string,
+    updatedData: { name: string; unit: RawMaterial["unit"] },
   ) => void;
   materials?: RawMaterial[];
   customUnits?: string[];
@@ -55,6 +60,7 @@ interface RawMaterialFormProps {
 
 const RawMaterialForm = ({
   onSubmit = () => {},
+  onEdit = () => {},
   materials = [],
   customUnits = [],
   onArchive = () => {},
@@ -72,6 +78,11 @@ const RawMaterialForm = ({
   const [newUnit, setNewUnit] = useState("");
   const [unitSearchTerm, setUnitSearchTerm] = useState("");
   const [isUnitsDialogOpen, setIsUnitsDialogOpen] = useState(false);
+  const [editingMaterial, setEditingMaterial] = useState<RawMaterial | null>(null);
+  const [editFormData, setEditFormData] = useState({
+    name: "",
+    unit: "kg" as RawMaterial["unit"],
+  });
 
   const defaultUnits = ["kg", "L", "un", "m", "g", "ml"];
   const allUnits = [...defaultUnits, ...customUnits];
@@ -99,6 +110,31 @@ const RawMaterialForm = ({
     if (!defaultUnits.includes(unit)) {
       onRemoveCustomUnit(unit);
     }
+  };
+
+  const handleEditMaterial = (material: RawMaterial) => {
+    setEditingMaterial(material);
+    setEditFormData({
+      name: material.name,
+      unit: material.unit,
+    });
+  };
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingMaterial && editFormData.name.trim()) {
+      onEdit(editingMaterial.id, {
+        name: editFormData.name.trim(),
+        unit: editFormData.unit,
+      });
+      setEditingMaterial(null);
+      setEditFormData({ name: "", unit: "kg" });
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMaterial(null);
+    setEditFormData({ name: "", unit: "kg" });
   };
 
   const filteredUnits = allUnits.filter((unit) =>
@@ -331,6 +367,16 @@ const RawMaterialForm = ({
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
+                      {!material.archived && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEditMaterial(material)}
+                          className="text-tire-300 hover:text-white"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="sm"
@@ -392,6 +438,89 @@ const RawMaterialForm = ({
           </CardContent>
         </Card>
       </div>
+
+      {/* Edit Material Dialog */}
+      <Dialog open={!!editingMaterial} onOpenChange={() => handleCancelEdit()}>
+        <DialogContent className="bg-factory-800 border-tire-600/30 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <Edit className="h-5 w-5 text-neon-blue" />
+              Editar Matéria-Prima
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEditSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name" className="text-tire-300">
+                Nome do Material
+              </Label>
+              <Input
+                id="edit-name"
+                value={editFormData.name}
+                onChange={(e) =>
+                  setEditFormData({ ...editFormData, name: e.target.value })
+                }
+                className="bg-factory-700/50 border-tire-600/30 text-white placeholder:text-tire-400"
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-unit" className="text-tire-300">
+                Unidade de Medida
+              </Label>
+              <Select
+                value={editFormData.unit}
+                onValueChange={(value) =>
+                  setEditFormData({
+                    ...editFormData,
+                    unit: value as RawMaterial["unit"],
+                  })
+                }
+              >
+                <SelectTrigger className="bg-factory-700/50 border-tire-600/30 text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-factory-800 border-tire-600/30 max-h-60">
+                  {allUnits.map((unit) => (
+                    <SelectItem
+                      key={unit}
+                      value={unit}
+                      className="text-white hover:bg-tire-700/50"
+                    >
+                      {unit === "kg" && "Quilograma (kg)"}
+                      {unit === "L" && "Litro (L)"}
+                      {unit === "un" && "Unidade (un)"}
+                      {unit === "m" && "Metro (m)"}
+                      {unit === "g" && "Grama (g)"}
+                      {unit === "ml" && "Mililitro (ml)"}
+                      {!defaultUnits.includes(unit) && unit}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex gap-2 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleCancelEdit}
+                className="flex-1 bg-factory-700/50 border-tire-600/30 text-tire-300 hover:text-white hover:bg-factory-600/50"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                className="flex-1 bg-gradient-to-r from-neon-blue to-tire-500 hover:from-tire-600 hover:to-neon-blue text-white"
+                disabled={isLoading}
+              >
+                <Edit className="h-4 w-4 mr-2" />
+                {isLoading ? "Salvando..." : "Salvar Alterações"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

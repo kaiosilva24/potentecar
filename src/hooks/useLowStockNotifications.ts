@@ -20,34 +20,36 @@ export const useLowStockNotifications = () => {
       setIsLoading(true);
       const allLowStockItems: LowStockItem[] = [];
 
-      // Check Raw Materials - using same logic as charts
-      const rawMaterials = await dataManager.loadFromDatabase('raw_materials');
-      if (rawMaterials) {
-        rawMaterials.forEach((material: any) => {
-          // Same logic as charts: minLevel > 0 && quantity <= minLevel
-          if (material.minStock > 0 && material.currentStock <= material.minStock) {
-            allLowStockItems.push({
-              id: material.id,
-              name: material.name,
-              currentStock: material.currentStock,
-              minStock: material.minStock,
-              category: 'raw_materials',
-              categoryLabel: 'Matéria-Prima'
-            });
-          }
-        });
-      }
+      console.log("🔍 [LowStockNotifications] Iniciando verificação de estoque baixo...");
 
       // Check Stock Items (this is where the actual stock data is stored)
       const stockItems = await dataManager.loadFromDatabase('stock_items');
+      console.log("📦 [LowStockNotifications] Stock items carregados:", stockItems?.length || 0);
+      
       if (stockItems) {
         // Get products and raw materials for names
         const products = await dataManager.loadFromDatabase('products');
         const rawMaterials = await dataManager.loadFromDatabase('raw_materials');
+        const resaleProducts = await dataManager.loadFromDatabase('resale_products');
+        
+        console.log("📋 [LowStockNotifications] Dados auxiliares carregados:", {
+          products: products?.length || 0,
+          rawMaterials: rawMaterials?.length || 0,
+          resaleProducts: resaleProducts?.length || 0
+        });
         
         stockItems.forEach((stockItem: any) => {
-          const quantity = stockItem.quantity || 0;
-          const minLevel = stockItem.min_level || 0;
+          const quantity = Number(stockItem.quantity) || 0;
+          const minLevel = Number(stockItem.min_level) || 50; // Default to 50 as per our changes
+          
+          console.log("🔍 [LowStockNotifications] Verificando item:", {
+            item_id: stockItem.item_id,
+            item_type: stockItem.item_type,
+            item_name: stockItem.item_name,
+            quantity,
+            minLevel,
+            isLowStock: minLevel > 0 && quantity <= minLevel
+          });
           
           // Same logic as charts: minLevel > 0 && quantity <= minLevel
           if (minLevel > 0 && quantity <= minLevel) {
@@ -85,7 +87,20 @@ export const useLowStockNotifications = () => {
             } else if (stockItem.item_type === 'resale') {
               category = 'resale_products';
               categoryLabel = 'Produtos de Revenda';
+              
+              // Try to get more detailed name from resale_products table
+              const resaleProduct = resaleProducts?.find((rp: any) => rp.id === stockItem.item_id);
+              if (resaleProduct && typeof resaleProduct === 'object' && 'name' in resaleProduct) {
+                itemName = (resaleProduct as any).name;
+              }
             }
+            
+            console.log("⚠️ [LowStockNotifications] Item com estoque baixo encontrado:", {
+              name: itemName,
+              category: categoryLabel,
+              currentStock: quantity,
+              minStock: minLevel
+            });
             
             allLowStockItems.push({
               id: stockItem.item_id || stockItem.id,
@@ -109,6 +124,8 @@ export const useLowStockNotifications = () => {
           current: item.currentStock,
           min: item.minStock
         })));
+      } else {
+        console.log("✅ [LowStockNotifications] Nenhum item com estoque baixo encontrado");
       }
     } catch (error) {
       console.error("❌ [LowStockNotifications] Erro ao verificar estoque baixo:", error);
