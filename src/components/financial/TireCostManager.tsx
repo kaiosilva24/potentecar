@@ -1007,9 +1007,13 @@ const TireCostManager = ({
     let warrantyCostComponent = 0;
 
     // CORREÇÃO: Usar quantidade TOTAL de pneus produzidos (todos os produtos)
-    const totalProductionQuantity = allProductsData.length > 0 
-      ? allProductsData.reduce((sum, tire) => sum + (tire.totalProduced || 0), 0)
-      : Math.max(totalProduced, totalSold, 1);
+    const totalProductionQuantity =
+      allProductsData.length > 0
+        ? allProductsData.reduce(
+            (sum, tire) => sum + (tire.totalProduced || 0),
+            0
+          )
+        : Math.max(totalProduced, totalSold, 1);
     const productionQuantity = Math.max(totalProductionQuantity, 1);
 
     console.log(
@@ -1022,7 +1026,9 @@ const TireCostManager = ({
       .reduce((total, emp) => total + (emp.salary || 0), 0);
 
     const totalCashFlowExpenses = cashFlowEntries
-      .filter((entry) => entry.type === "expense")
+      .filter(
+        (entry) => entry.type === "expense" && entry.category !== "Fornecedores"
+      )
       .reduce((total, entry) => total + entry.amount, 0);
 
     const totalDefectiveTireSales = calculateDefectiveTireSalesTotal();
@@ -1139,11 +1145,14 @@ const TireCostManager = ({
         total: totalCost,
         calculationDetails: {
           totalCashFlowExpenses: cashFlowEntries
-            .filter((entry) => entry.type === "expense")
+            .filter(
+              (entry) =>
+                entry.type === "expense" && entry.category !== "Fornecedores"
+            )
             .reduce((total, entry) => total + entry.amount, 0),
           totalProductionQuantity: productionQuantity,
-          cashFlowPerTire: cashFlowCostComponent
-        }
+          cashFlowPerTire: cashFlowCostComponent,
+        },
       },
     };
 
@@ -3080,9 +3089,25 @@ const TireCostManager = ({
                                         )}
                                       </span>
                                     </div>
-                                    {selectedProductAnalysis.costBreakdown?.calculationDetails && (
+                                    {selectedProductAnalysis.costBreakdown
+                                      ?.calculationDetails && (
                                       <div className="text-xs text-tire-400 text-right">
-                                        {formatCurrency(selectedProductAnalysis.costBreakdown.calculationDetails.totalCashFlowExpenses)} ÷ {selectedProductAnalysis.costBreakdown.calculationDetails.totalProductionQuantity} pneus = {formatCurrency(selectedProductAnalysis.costBreakdown.calculationDetails.cashFlowPerTire)}
+                                        {formatCurrency(
+                                          selectedProductAnalysis.costBreakdown
+                                            .calculationDetails
+                                            .totalCashFlowExpenses
+                                        )}{" "}
+                                        ÷{" "}
+                                        {
+                                          selectedProductAnalysis.costBreakdown
+                                            .calculationDetails
+                                            .totalProductionQuantity
+                                        }{" "}
+                                        pneus ={" "}
+                                        {formatCurrency(
+                                          selectedProductAnalysis.costBreakdown
+                                            .calculationDetails.cashFlowPerTire
+                                        )}
                                       </div>
                                     )}
                                   </div>
