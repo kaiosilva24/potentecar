@@ -441,6 +441,7 @@ const ProductionDashboard = ({
             stockItems={stockItems}
             onSubmit={addRecipe}
             onArchive={handleArchiveRecipe}
+            onUpdate={updateRecipe}
           />
         </TabsContent>
 

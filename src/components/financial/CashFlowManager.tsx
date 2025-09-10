@@ -23,6 +23,8 @@ import {
   CalendarDays,
   Trash2,
   ShoppingCart,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import {
   CashFlowEntry,
@@ -83,6 +85,20 @@ const CashFlowManager = ({
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
   const [filterCategory, setFilterCategory] = useState("all_categories");
+
+  // Estado para transações expandidas
+  const [expandedTransactions, setExpandedTransactions] = useState<Set<string>>(new Set());
+
+  // Função para toggle de expansão
+  const toggleTransactionExpansion = (transactionKey: string) => {
+    const newExpanded = new Set(expandedTransactions);
+    if (newExpanded.has(transactionKey)) {
+      newExpanded.delete(transactionKey);
+    } else {
+      newExpanded.add(transactionKey);
+    }
+    setExpandedTransactions(newExpanded);
+  };
 
   // Estados para venda multi-produto
   const [isMultiProductMode, setIsMultiProductMode] = useState(false);
@@ -897,6 +913,12 @@ const CashFlowManager = ({
                     <SelectContent className="bg-factory-800 border-tire-600/30">
                       {getCurrentCategoryData()
                         .filter((item: any) => !item.archived)
+                        .sort((a: any, b: any) => {
+                          // Ordenação alfabética por nome ou descrição
+                          const nameA = category === "debts" ? a.description : a.name;
+                          const nameB = category === "debts" ? b.description : b.name;
+                          return nameA.localeCompare(nameB, 'pt-BR', { sensitivity: 'base' });
+                        })
                         .map((item: any) => {
                           return (
                             <SelectItem
@@ -1471,69 +1493,257 @@ const CashFlowManager = ({
                   )}
                 </div>
               ) : (
-                filteredEntries
-                  .sort(
-                    (a, b) =>
-                      new Date(b.transaction_date).getTime() -
-                      new Date(a.transaction_date).getTime(),
-                  )
-                  .map((entry) => (
-                    <div
-                      key={entry.id}
-                      className="p-4 bg-factory-700/30 rounded-lg border border-tire-600/20"
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-3">
-                          {entry.type === "income" ? (
-                            <ArrowUpCircle className="h-5 w-5 text-neon-green" />
-                          ) : (
-                            <ArrowDownCircle className="h-5 w-5 text-red-400" />
+                (() => {
+                  // Função para extrair informações de produto da venda
+                  const extractProductInfoFromSale = (description: string) => {
+                    const productIdMatch = description.match(/ID_Produto: ([^|]+)/);
+                    const quantityMatch = description.match(/Qtd: ([0-9.]+)(?:\s|$)/);
+                    
+                    if (productIdMatch && quantityMatch) {
+                      return {
+                        productId: productIdMatch[1].trim(),
+                        quantity: parseFloat(quantityMatch[1])
+                      };
+                    }
+                    return null;
+                  };
+
+                  // Função para extrair método de pagamento
+                  const extractPaymentMethodFromSale = (description: string) => {
+                    const methodMatch = description.match(/Método:\s*([^|]+)/);
+                    return methodMatch ? methodMatch[1].trim() : "";
+                  };
+
+                  // Agrupar vendas por transação (data + cliente + método de pagamento)
+                  const groupSalesByTransaction = (entries: any[]) => {
+                    const salesEntries = entries.filter(entry => 
+                      entry.type === "income" && 
+                      entry.description && 
+                      entry.description.includes("ID_Produto:")
+                    );
+
+                    const transactionGroups = new Map();
+
+                    salesEntries.forEach(sale => {
+                      const cleanClientName = (sale.reference_name || "Cliente não identificado")
+                        .replace(/^VENDA MULTI-PRODUTO PARA\s+/i, "")
+                        .replace(/\s+-\s+.*$/, "");
+                      const paymentMethod = extractPaymentMethodFromSale(sale.description || "");
+                      const transactionKey = `${sale.transaction_date}_${cleanClientName}_${paymentMethod}`;
+
+                      if (!transactionGroups.has(transactionKey)) {
+                        transactionGroups.set(transactionKey, {
+                          key: transactionKey,
+                          client: cleanClientName,
+                          date: sale.transaction_date,
+                          paymentMethod: paymentMethod,
+                          sales: [],
+                          totalAmount: 0
+                        });
+                      }
+
+                      const group = transactionGroups.get(transactionKey);
+                      group.sales.push(sale);
+                      group.totalAmount += sale.amount;
+                    });
+
+                    return Array.from(transactionGroups.values());
+                  };
+
+                  // Separar vendas agrupadas das outras transações
+                  const salesEntries = filteredEntries.filter(entry => 
+                    entry.type === "income" && 
+                    entry.description && 
+                    entry.description.includes("ID_Produto:")
+                  );
+                  
+                  const otherEntries = filteredEntries.filter(entry => 
+                    !(entry.type === "income" && 
+                      entry.description && 
+                      entry.description.includes("ID_Produto:"))
+                  );
+
+                  const groupedSales = groupSalesByTransaction(salesEntries);
+                  
+                  // Combinar e ordenar por data
+                  const allTransactions = [
+                    ...groupedSales.map(group => ({ ...group, isGroupedSale: true })),
+                    ...otherEntries.map(entry => ({ ...entry, isGroupedSale: false }))
+                  ].sort((a, b) => {
+                    const dateA = a.isGroupedSale ? a.date : a.transaction_date;
+                    const dateB = b.isGroupedSale ? b.date : b.transaction_date;
+                    return new Date(dateB).getTime() - new Date(dateA).getTime();
+                  });
+
+                  return allTransactions.map((item) => {
+                    if (item.isGroupedSale) {
+                      // Renderizar venda agrupada
+                      return (
+                        <div key={item.key} className="space-y-2">
+                          {/* Cabeçalho da transação */}
+                          <div className="p-4 bg-neon-green/10 rounded-lg border border-neon-green/30">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-3">
+                                <ArrowUpCircle className="h-5 w-5 text-neon-green" />
+                                <div>
+                                  <h4 className="text-white font-bold text-lg">
+                                    VENDA PARA {item.client.toUpperCase()}
+                                  </h4>
+                                  <p className="text-tire-300 text-sm">
+                                    {new Date(item.date).toLocaleDateString("pt-BR")} • {item.paymentMethod}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-xl font-bold text-neon-green">
+                                  +{formatCurrency(item.totalAmount)}
+                                </span>
+                                <p className="text-tire-300 text-sm">
+                                  {item.sales.length} tipo{item.sales.length > 1 ? 's' : ''} de produto{item.sales.length > 1 ? 's' : ''}
+                                </p>
+                              </div>
+                            </div>
+                            
+                            {/* Botão para expandir/recolher produtos */}
+                            <div className="flex items-center justify-between">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => toggleTransactionExpansion(item.key)}
+                                className="text-tire-300 hover:text-white hover:bg-tire-700/50 flex items-center gap-2"
+                              >
+                                {expandedTransactions.has(item.key) ? (
+                                  <>
+                                    <ChevronUp className="h-4 w-4" />
+                                    Ocultar Produtos
+                                  </>
+                                ) : (
+                                  <>
+                                    <ChevronDown className="h-4 w-4" />
+                                    Visualizar Produtos
+                                  </>
+                                )}
+                              </Button>
+                            </div>
+                          </div>
+
+                          {/* Lista de produtos - só mostra se expandido */}
+                          {expandedTransactions.has(item.key) && (
+                            <div className="space-y-1 ml-8">
+                              {item.sales.map((sale) => {
+                                const productInfo = extractProductInfoFromSale(sale.description || "");
+                                const quantity = productInfo?.quantity || 0;
+                                
+                                // Extrair nome do produto da referência
+                                const productName = sale.reference_name
+                                  ?.replace(/^.*para\s+[^-]+-\s*/, '')
+                                  ?.trim() || "Produto";
+
+                                return (
+                                  <div key={sale.id} className="flex items-center justify-between p-3 bg-factory-700/20 rounded border border-tire-600/20">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-neon-green font-bold text-sm">
+                                        {quantity.toFixed(0)}x
+                                      </span>
+                                      <span className="text-white">
+                                        {productName}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                      <span className="text-neon-green font-bold">
+                                        {formatCurrency(sale.amount)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                              
+                              {/* Botão para excluir venda inteira */}
+                              <div className="flex justify-end mt-3 pt-2 border-t border-tire-600/30">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    if (confirm(`Tem certeza que deseja excluir toda a venda para ${item.client}?\n\nIsso excluirá ${item.sales.length} produto${item.sales.length > 1 ? 's' : ''} no valor total de ${formatCurrency(item.totalAmount)}.`)) {
+                                      // Excluir todos os produtos da venda
+                                      item.sales.forEach(sale => {
+                                        handleDeleteTransaction(sale);
+                                      });
+                                    }
+                                  }}
+                                  className="text-red-400 hover:text-red-300 hover:bg-red-900/20 px-3 py-1"
+                                  title="Excluir venda inteira"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Excluir Venda
+                                </Button>
+                              </div>
+                            </div>
                           )}
-                          <div>
-                            <h4 className="text-white font-medium">
-                              {entry.reference_name}
-                            </h4>
-                            <p className="text-tire-400 text-sm">
-                              {entry.category}
-                            </p>
-                          </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <div className="text-right">
-                            <span
-                              className={`text-lg font-bold ${
-                                entry.type === "income"
-                                  ? "text-neon-green"
-                                  : "text-red-400"
-                              }`}
-                            >
-                              {entry.type === "income" ? "+" : "-"}
-                              {formatCurrency(entry.amount)}
-                            </span>
-                            <p className="text-tire-400 text-sm">
-                              {new Date(
-                                entry.transaction_date,
-                              ).toLocaleDateString("pt-BR")}
-                            </p>
+                      );
+                    } else {
+                      // Renderizar transação normal
+                      return (
+                        <div
+                          key={item.id}
+                          className="p-4 bg-factory-700/30 rounded-lg border border-tire-600/20"
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-3">
+                              {item.type === "income" ? (
+                                <ArrowUpCircle className="h-5 w-5 text-neon-green" />
+                              ) : (
+                                <ArrowDownCircle className="h-5 w-5 text-red-400" />
+                              )}
+                              <div>
+                                <h4 className="text-white font-medium">
+                                  {item.reference_name}
+                                </h4>
+                                <p className="text-tire-400 text-sm">
+                                  {item.category}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div className="text-right">
+                                <span
+                                  className={`text-lg font-bold ${
+                                    item.type === "income"
+                                      ? "text-neon-green"
+                                      : "text-red-400"
+                                  }`}
+                                >
+                                  {item.type === "income" ? "+" : "-"}
+                                  {formatCurrency(item.amount)}
+                                </span>
+                                <p className="text-tire-400 text-sm">
+                                  {new Date(
+                                    item.transaction_date,
+                                  ).toLocaleDateString("pt-BR")}
+                                </p>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteTransaction(item)}
+                                className="text-red-400 hover:text-red-300 hover:bg-red-900/20 p-1 h-8 w-8"
+                                title="Excluir transação"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteTransaction(entry)}
-                            className="text-red-400 hover:text-red-300 hover:bg-red-900/20 p-1 h-8 w-8"
-                            title="Excluir transação"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          {item.description && (
+                            <p className="text-tire-400 text-sm mt-2">
+                              {item.description}
+                            </p>
+                          )}
                         </div>
-                      </div>
-                      {entry.description && (
-                        <p className="text-tire-400 text-sm mt-2">
-                          {entry.description}
-                        </p>
-                      )}
-                    </div>
-                  ))
+                      );
+                    }
+                  });
+                })()
               )}
             </div>
             {filteredEntries.length > 0 && (

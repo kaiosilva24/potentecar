@@ -20,8 +20,17 @@ import {
   X,
   Calculator,
   DollarSign,
+  Edit,
+  Save,
 } from "lucide-react";
 import { RawMaterial, ProductionRecipe, StockItem } from "@/types/financial";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 interface ProductionRegistrationProps {
   materials?: RawMaterial[];
@@ -29,6 +38,7 @@ interface ProductionRegistrationProps {
   stockItems?: StockItem[];
   onSubmit?: (recipe: Omit<ProductionRecipe, "id" | "created_at">) => void;
   onArchive?: (recipeId: string) => void;
+  onUpdate?: (recipeId: string, updates: Partial<ProductionRecipe>) => void;
   isLoading?: boolean;
 }
 
@@ -38,6 +48,7 @@ const ProductionRegistration = ({
   stockItems = [],
   onSubmit = () => {},
   onArchive = () => {},
+  onUpdate = () => {},
   isLoading = false,
 }: ProductionRegistrationProps) => {
   const [productName, setProductName] = useState("");
@@ -53,6 +64,21 @@ const ProductionRegistration = ({
   const [materialQuantity, setMaterialQuantity] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [showArchived, setShowArchived] = useState(false);
+  
+  // Edit states
+  const [editingRecipe, setEditingRecipe] = useState<ProductionRecipe | null>(null);
+  const [editProductName, setEditProductName] = useState("");
+  const [editSelectedMaterials, setEditSelectedMaterials] = useState<
+    Array<{
+      material_id: string;
+      material_name: string;
+      quantity_needed: number;
+      unit: string;
+    }>
+  >([]);
+  const [editSelectedMaterial, setEditSelectedMaterial] = useState("");
+  const [editMaterialQuantity, setEditMaterialQuantity] = useState("");
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
   const activeMaterials = materials.filter((m) => !m.archived);
 
@@ -137,6 +163,11 @@ const ProductionRegistration = ({
     return calculateRecipeCost(selectedMaterials);
   }, [selectedMaterials, stockItems]);
 
+  // Calculate cost for edit materials
+  const editMaterialsCost = useMemo(() => {
+    return calculateRecipeCost(editSelectedMaterials);
+  }, [editSelectedMaterials, stockItems]);
+
   const handleAddMaterial = () => {
     if (
       selectedMaterial &&
@@ -193,6 +224,80 @@ const ProductionRegistration = ({
       setProductName("");
       setSelectedMaterials([]);
     }
+  };
+
+  // Edit functions
+  const handleEditRecipe = (recipe: ProductionRecipe) => {
+    setEditingRecipe(recipe);
+    setEditProductName(recipe.product_name);
+    setEditSelectedMaterials([...recipe.materials]);
+    setEditSelectedMaterial("");
+    setEditMaterialQuantity("");
+    setIsEditDialogOpen(true);
+  };
+
+  const handleAddEditMaterial = () => {
+    if (
+      editSelectedMaterial &&
+      editMaterialQuantity &&
+      parseFloat(editMaterialQuantity) > 0
+    ) {
+      const material = activeMaterials.find((m) => m.id === editSelectedMaterial);
+      if (material) {
+        const existingIndex = editSelectedMaterials.findIndex(
+          (m) => m.material_id === editSelectedMaterial,
+        );
+
+        if (existingIndex >= 0) {
+          // Update existing material quantity
+          setEditSelectedMaterials((prev) =>
+            prev.map((item, index) =>
+              index === existingIndex
+                ? { ...item, quantity_needed: parseFloat(editMaterialQuantity) }
+                : item,
+            ),
+          );
+        } else {
+          // Add new material
+          setEditSelectedMaterials((prev) => [
+            ...prev,
+            {
+              material_id: editSelectedMaterial,
+              material_name: material.name,
+              quantity_needed: parseFloat(editMaterialQuantity),
+              unit: material.unit,
+            },
+          ]);
+        }
+        setEditSelectedMaterial("");
+        setEditMaterialQuantity("");
+      }
+    }
+  };
+
+  const handleRemoveEditMaterial = (materialId: string) => {
+    setEditSelectedMaterials((prev) =>
+      prev.filter((m) => m.material_id !== materialId),
+    );
+  };
+
+  const handleSaveEdit = () => {
+    if (editingRecipe && editProductName.trim() && editSelectedMaterials.length > 0) {
+      onUpdate(editingRecipe.id, {
+        product_name: editProductName,
+        materials: editSelectedMaterials,
+      });
+      handleCancelEdit();
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingRecipe(null);
+    setEditProductName("");
+    setEditSelectedMaterials([]);
+    setEditSelectedMaterial("");
+    setEditMaterialQuantity("");
+    setIsEditDialogOpen(false);
   };
 
   const filteredRecipes = recipes.filter((recipe) => {
@@ -430,6 +535,17 @@ const ProductionRegistration = ({
                         {recipe.product_name}
                       </h4>
                       <div className="flex items-center gap-2">
+                        {!recipe.archived && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditRecipe(recipe)}
+                            className="text-neon-green hover:text-neon-green/80"
+                            title="Editar receita"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="sm"
@@ -545,6 +661,173 @@ const ProductionRegistration = ({
           </CardContent>
         </Card>
       </div>
+
+      {/* Edit Recipe Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="max-w-2xl bg-factory-800 border-tire-600/30">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <Edit className="h-5 w-5 text-neon-green" />
+              Editar Receita: {editingRecipe?.product_name}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 max-h-96 overflow-y-auto">
+            <div className="space-y-2">
+              <Label htmlFor="editProductName" className="text-tire-300">
+                Nome do Produto Final
+              </Label>
+              <Input
+                id="editProductName"
+                value={editProductName}
+                onChange={(e) => setEditProductName(e.target.value)}
+                className="bg-factory-700/50 border-tire-600/30 text-white placeholder:text-tire-400"
+                placeholder="Nome do produto"
+              />
+            </div>
+
+            <div className="space-y-4">
+              <Label className="text-tire-300">
+                Matérias-Primas Necessárias
+              </Label>
+
+              <div className="flex gap-2 items-end">
+                <Select
+                  value={editSelectedMaterial}
+                  onValueChange={setEditSelectedMaterial}
+                >
+                  <SelectTrigger className="flex-1 bg-factory-700/50 border-tire-600/30 text-white">
+                    <SelectValue placeholder="Selecione uma matéria-prima" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-factory-800 border-tire-600/30">
+                    {activeMaterials.map((material) => (
+                      <SelectItem
+                        key={material.id}
+                        value={material.id}
+                        className="text-white hover:bg-tire-700/50"
+                      >
+                        {material.name} ({material.unit})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={editMaterialQuantity}
+                  onChange={(e) => setEditMaterialQuantity(e.target.value)}
+                  className="w-24 bg-factory-700/50 border-tire-600/30 text-white placeholder:text-tire-400"
+                  placeholder="Qtd"
+                />
+
+                <Button
+                  type="button"
+                  onClick={handleAddEditMaterial}
+                  className="bg-neon-green hover:bg-neon-green/80 px-3 shrink-0"
+                  disabled={!editSelectedMaterial || !editMaterialQuantity}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {editSelectedMaterials.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-tire-300 text-sm">
+                    Materiais Selecionados:
+                  </Label>
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {editSelectedMaterials.map((material) => (
+                      <div
+                        key={material.material_id}
+                        className="flex items-center justify-between p-3 bg-factory-700/30 rounded border border-tire-600/20"
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-white text-sm font-medium">
+                              {material.material_name}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() =>
+                                handleRemoveEditMaterial(material.material_id)
+                              }
+                              className="text-red-400 hover:text-red-300 p-1 h-6 w-6"
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <div className="flex items-center justify-between mt-1">
+                            <span className="text-tire-400 text-xs">
+                              {material.quantity_needed} {material.unit}
+                            </span>
+                            <span className="text-neon-green text-xs font-medium">
+                              {formatCurrency(
+                                calculateMaterialCost(
+                                  material.material_id,
+                                  material.quantity_needed,
+                                ),
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Total Cost Display for Edit */}
+                  {editSelectedMaterials.length > 0 && (
+                    <div className="mt-3 p-3 bg-neon-green/10 rounded border border-neon-green/30">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Calculator className="h-4 w-4 text-neon-green" />
+                          <span className="text-white font-medium text-sm">
+                            Custo Total da Receita:
+                          </span>
+                        </div>
+                        <span className="text-neon-green font-bold">
+                          {formatCurrency(editMaterialsCost)}
+                        </span>
+                      </div>
+                      {editMaterialsCost === 0 && (
+                        <p className="text-tire-400 text-xs mt-1">
+                          * Alguns materiais não possuem custo cadastrado no
+                          estoque
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-4 border-t border-tire-600/30">
+            <Button
+              onClick={handleSaveEdit}
+              className="flex-1 bg-neon-green hover:bg-neon-green/80 text-white"
+              disabled={
+                !editProductName.trim() ||
+                editSelectedMaterials.length === 0
+              }
+            >
+              <Save className="h-4 w-4 mr-2" />
+              Salvar Alterações
+            </Button>
+            <Button
+              onClick={handleCancelEdit}
+              variant="outline"
+              className="flex-1 border-tire-600/30 text-tire-300 hover:text-white hover:bg-tire-700/50"
+            >
+              <X className="h-4 w-4 mr-2" />
+              Cancelar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

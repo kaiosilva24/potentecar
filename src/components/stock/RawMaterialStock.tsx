@@ -62,6 +62,11 @@ const RawMaterialStock = ({
   const [selectedItemForLevels, setSelectedItemForLevels] =
     useState<string>("");
   const [minLevel, setMinLevel] = useState("");
+  
+  // Estados para dropdown de material com navegação por teclado
+  const [materialSearch, setMaterialSearch] = useState("");
+  const [showMaterialDropdown, setShowMaterialDropdown] = useState(false);
+  const [selectedMaterialIndex, setSelectedMaterialIndex] = useState(-1);
   const [notification, setNotification] = useState<{
     show: boolean;
     type: 'success' | 'error';
@@ -194,6 +199,27 @@ const RawMaterialStock = ({
   const filteredMaterials = activeMaterials.filter((material) =>
     material.name.toLowerCase().includes(searchTerm.toLowerCase()),
   );
+
+  // Filtrar materiais para o dropdown de seleção
+  const filteredMaterialsForDropdown = activeMaterials.filter((material) =>
+    material.name.toLowerCase().includes(materialSearch.toLowerCase()),
+  );
+
+  // Função para selecionar material
+  const handleMaterialSelect = (material: any) => {
+    setSelectedMaterial(material.id);
+    setMaterialSearch(material.name);
+    setShowMaterialDropdown(false);
+    setSelectedMaterialIndex(-1);
+    
+    // Focar no campo de quantidade após seleção
+    setTimeout(() => {
+      const quantityInput = document.querySelector('input[placeholder="Digite a quantidade"]') as HTMLInputElement;
+      if (quantityInput) {
+        quantityInput.focus();
+      }
+    }, 100);
+  };
 
   // Filtrar apenas itens de material
   const materialStockItems = useMemo(() => {
@@ -460,25 +486,99 @@ const RawMaterialStock = ({
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label className="text-tire-300">Material</Label>
-              <Select
-                value={selectedMaterial}
-                onValueChange={setSelectedMaterial}
-              >
-                <SelectTrigger className="bg-factory-700/50 border-tire-600/30 text-white">
-                  <SelectValue placeholder="Selecione um material" />
-                </SelectTrigger>
-                <SelectContent className="bg-factory-800 border-tire-600/30">
-                  {activeMaterials.map((material) => (
-                    <SelectItem
-                      key={material.id}
-                      value={material.id}
-                      className="text-white hover:bg-tire-700/50"
-                    >
-                      {material.name} ({material.unit})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="relative">
+                <Input
+                  value={materialSearch}
+                  onChange={(e) => {
+                    setMaterialSearch(e.target.value);
+                    setShowMaterialDropdown(e.target.value.length > 0);
+                    setSelectedMaterialIndex(-1);
+                    if (!e.target.value) {
+                      setSelectedMaterial("");
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      if (filteredMaterialsForDropdown.length > 0) {
+                        const newIndex = selectedMaterialIndex < filteredMaterialsForDropdown.length - 1 ? selectedMaterialIndex + 1 : 0;
+                        setSelectedMaterialIndex(newIndex);
+                        
+                        // Auto-scroll to keep selected item visible
+                        setTimeout(() => {
+                          const dropdown = document.querySelector('.absolute.z-50.w-full.mt-1.bg-factory-800');
+                          const selectedItem = dropdown?.children[newIndex] as HTMLElement;
+                          if (selectedItem && dropdown) {
+                            selectedItem.scrollIntoView({ 
+                              behavior: 'smooth', 
+                              block: 'nearest' 
+                            });
+                          }
+                        }, 0);
+                      }
+                    } else if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      if (filteredMaterialsForDropdown.length > 0) {
+                        const newIndex = selectedMaterialIndex > 0 ? selectedMaterialIndex - 1 : filteredMaterialsForDropdown.length - 1;
+                        setSelectedMaterialIndex(newIndex);
+                        
+                        // Auto-scroll to keep selected item visible
+                        setTimeout(() => {
+                          const dropdown = document.querySelector('.absolute.z-50.w-full.mt-1.bg-factory-800');
+                          const selectedItem = dropdown?.children[newIndex] as HTMLElement;
+                          if (selectedItem && dropdown) {
+                            selectedItem.scrollIntoView({ 
+                              behavior: 'smooth', 
+                              block: 'nearest' 
+                            });
+                          }
+                        }, 0);
+                      }
+                    } else if (e.key === 'Enter') {
+                      e.preventDefault();
+                      if (selectedMaterialIndex >= 0 && filteredMaterialsForDropdown[selectedMaterialIndex]) {
+                        handleMaterialSelect(filteredMaterialsForDropdown[selectedMaterialIndex]);
+                      }
+                    } else if (e.key === 'Escape') {
+                      setShowMaterialDropdown(false);
+                      setSelectedMaterialIndex(-1);
+                    }
+                  }}
+                  className="bg-factory-700/50 border-tire-600/30 text-white pr-10"
+                  placeholder="Digite para buscar material..."
+                />
+                <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-tire-400" />
+              </div>
+              {showMaterialDropdown && filteredMaterialsForDropdown.length > 0 && (
+                <div className="absolute z-50 mt-1 bg-factory-800 border border-tire-600/30 rounded-lg shadow-lg overflow-y-auto" style={{width: '300px', maxHeight: '180px'}}>
+                  {filteredMaterialsForDropdown.map((material, index) => {
+                    const isSelected = index === selectedMaterialIndex;
+                    return (
+                      <div
+                        key={material.id}
+                        onClick={() => handleMaterialSelect(material)}
+                        className={`cursor-pointer text-white border-b border-tire-600/20 last:border-b-0 flex items-center ${
+                          isSelected 
+                            ? 'bg-neon-blue/20 border-neon-blue/50' 
+                            : 'hover:bg-tire-700/50'
+                        }`}
+                        style={{height: '45px', paddingLeft: '12px', paddingRight: '12px'}}
+                      >
+                        <div className="text-sm font-medium truncate">{material.name}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {showMaterialDropdown &&
+                materialSearch &&
+                filteredMaterialsForDropdown.length === 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-factory-800 border border-tire-600/30 rounded-lg shadow-lg p-3">
+                    <div className="text-tire-400 text-sm">
+                      Nenhum material encontrado
+                    </div>
+                  </div>
+                )}
             </div>
 
             <div className="space-y-2">
@@ -490,6 +590,14 @@ const RawMaterialStock = ({
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
                 onWheel={(e) => e.currentTarget.blur()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && quantity) {
+                    const unitPriceInput = document.querySelector('input[placeholder="Digite o preço por unidade"]') as HTMLInputElement;
+                    if (unitPriceInput) {
+                      unitPriceInput.focus();
+                    }
+                  }
+                }}
                 className="bg-factory-700/50 border-tire-600/30 text-white placeholder:text-tire-400"
                 placeholder="Digite a quantidade"
               />
@@ -506,6 +614,14 @@ const RawMaterialStock = ({
                 value={unitPrice}
                 onChange={(e) => setUnitPrice(e.target.value)}
                 onWheel={(e) => e.currentTarget.blur()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const addButton = document.querySelector('button:has(.lucide-plus)') as HTMLButtonElement;
+                    if (addButton && !addButton.disabled) {
+                      addButton.focus();
+                    }
+                  }
+                }}
                 className="bg-factory-700/50 border-tire-600/30 text-white placeholder:text-tire-400"
                 placeholder="Digite o preço por unidade"
               />

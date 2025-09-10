@@ -14,7 +14,7 @@ if (process.env.TEMPO === "true") {
 export default defineConfig({
   base: process.env.NODE_ENV === "development" ? "/" : process.env.VITE_BASE_PATH || "/",
   server: {
-    port: 5000,
+    port: 5173,
     host: true
   },
   optimizeDeps: {

@@ -1026,9 +1026,7 @@ const TireCostManager = ({
       .reduce((total, emp) => total + (emp.salary || 0), 0);
 
     const totalCashFlowExpenses = cashFlowEntries
-      .filter(
-        (entry) => entry.type === "expense" && entry.category !== "Fornecedores"
-      )
+      .filter((entry) => entry.type === "expense" && !entry.category.toLowerCase().includes("fornecedor"))
       .reduce((total, entry) => total + entry.amount, 0);
 
     const totalDefectiveTireSales = calculateDefectiveTireSalesTotal();
@@ -1145,10 +1143,7 @@ const TireCostManager = ({
         total: totalCost,
         calculationDetails: {
           totalCashFlowExpenses: cashFlowEntries
-            .filter(
-              (entry) =>
-                entry.type === "expense" && entry.category !== "Fornecedores"
-            )
+            .filter((entry) => entry.type === "expense" && !entry.category.toLowerCase().includes("fornecedor"))
             .reduce((total, entry) => total + entry.amount, 0),
           totalProductionQuantity: productionQuantity,
           cashFlowPerTire: cashFlowCostComponent,

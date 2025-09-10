@@ -28,13 +28,15 @@ import {
   History,
   Trash2,
   Calendar,
+  ChevronUp,
+  ChevronDown,
   Filter,
   X,
   CalendarDays,
   AlertTriangle,
   BarChart3,
-  ChevronDown,
   Plus,
+  Edit,
 } from "lucide-react";
 import {
   BarChart,
@@ -133,6 +135,31 @@ const SalesDashboard = ({
     totalPrice: number;
     originalProductId: string;
   }>>([]);
+
+  // Estados para edição de vendas
+  const [editingSale, setEditingSale] = useState<any>(null);
+  const [editSaleData, setEditSaleData] = useState({
+    quantity: "",
+    unitPrice: "",
+    totalValue: "",
+    customer: "",
+    salesperson: "",
+    paymentMethod: ""
+  });
+
+  // Estados para transações expandidas
+  const [expandedTransactions, setExpandedTransactions] = useState<Set<string>>(new Set());
+
+  // Toggle transaction expansion
+  const toggleTransactionExpansion = (transactionKey: string) => {
+    const newExpanded = new Set(expandedTransactions);
+    if (newExpanded.has(transactionKey)) {
+      newExpanded.delete(transactionKey);
+    } else {
+      newExpanded.add(transactionKey);
+    }
+    setExpandedTransactions(newExpanded);
+  };
 
   // Use database hooks
   const { salespeople, isLoading: salespeopleLoading } = useSalespeople();
@@ -1325,6 +1352,88 @@ const SalesDashboard = ({
     return description.includes("Método: A PRAZO") && description.includes("Status: PENDENTE");
   };
 
+  // Handle edit sale
+  const handleEditSale = (sale: any) => {
+    // Extract data from sale description
+    const productInfo = extractProductInfoFromSale(sale.description || "");
+    const unitPriceMatch = sale.description?.match(/Preço Unit:\s*R\$\s*([0-9.,]+)/);
+    const unitPrice = unitPriceMatch ? parseFloat(unitPriceMatch[1].replace(',', '.')) : 0;
+    const salespersonMatch = sale.description?.match(/Vendedor:\s*([^|]+)/);
+    const salesperson = salespersonMatch ? salespersonMatch[1].trim() : "";
+    const paymentMethodMatch = sale.description?.match(/Método:\s*([^|]+)/);
+    const paymentMethod = paymentMethodMatch ? paymentMethodMatch[1].trim() : "";
+    
+    // Extract customer name from reference_name
+    const customerName = sale.reference_name?.replace(/^.*para\s+/i, '').replace(/\s+-\s+.*$/, '') || "";
+
+    setEditingSale(sale);
+    setEditSaleData({
+      quantity: productInfo?.quantity?.toString() || "",
+      unitPrice: unitPrice.toString(),
+      totalValue: getDisplayAmount(sale).toString(),
+      customer: customerName,
+      salesperson: salesperson,
+      paymentMethod: paymentMethod
+    });
+  };
+
+  // Handle save edited sale
+  const handleSaveEditedSale = async () => {
+    if (!editingSale) return;
+
+    try {
+      const newQuantity = parseFloat(editSaleData.quantity);
+      const newUnitPrice = parseFloat(editSaleData.unitPrice);
+      const newTotalValue = newQuantity * newUnitPrice;
+
+      // Extract original product info and quantity
+      const originalProductInfo = extractProductInfoFromSale(editingSale.description || "");
+      
+      if (originalProductInfo) {
+        const { productId, quantity: originalQuantity } = originalProductInfo;
+        
+        // Find the product in stock
+        const stockItem = stockItems.find(item => item.id === productId);
+        
+        if (stockItem) {
+          // Calculate the difference in quantity
+          const quantityDifference = newQuantity - originalQuantity;
+          
+          // Update stock: restore original quantity, then deduct new quantity
+          const newStockQuantity = stockItem.quantity + originalQuantity - newQuantity;
+          
+          if (newStockQuantity < 0) {
+            alert(`Estoque insuficiente. Disponível: ${stockItem.quantity + originalQuantity} unidades`);
+            return;
+          }
+          
+          // Update stock quantity
+          await updateStockItem(productId, {
+            quantity: newStockQuantity
+          });
+        }
+      }
+
+      // Update the cash flow entry
+      await updateCashFlowEntry(editingSale.id, {
+        amount: newTotalValue,
+        reference_name: `Venda para ${editSaleData.customer} - ${editingSale.reference_name.split(' - ')[1] || 'Produto'}`,
+        description: editingSale.description
+          ?.replace(/Qtd:\s*[0-9.]+/, `Qtd: ${newQuantity}`)
+          ?.replace(/Preço Unit:\s*R\$\s*[0-9.,]+/, `Preço Unit: ${formatCurrency(newUnitPrice)}`)
+          ?.replace(/Vendedor:\s*[^|]+/, `Vendedor: ${editSaleData.salesperson}`)
+          ?.replace(/Método:\s*[^|]+/, `Método: ${editSaleData.paymentMethod}`)
+      });
+
+      alert("Venda editada com sucesso!");
+      setEditingSale(null);
+      onRefresh();
+    } catch (error) {
+      console.error("Erro ao editar venda:", error);
+      alert("Erro ao editar venda. Tente novamente.");
+    }
+  };
+
   // Handle credit sale payment confirmation
   const handleConfirmCreditPayment = async (saleId: string, saleName: string, originalValue: number) => {
     if (confirm(`Confirmar recebimento do pagamento a prazo?\n\nVenda: ${saleName}\nValor: ${formatCurrency(originalValue)}\n\nIsso irá adicionar o valor ao fluxo de caixa.`)) {
@@ -1911,31 +2020,60 @@ const SalesDashboard = ({
     }
   })();
 
+  // Handle Enter key navigation
+  const handleKeyDown = (e: React.KeyboardEvent, nextFieldRef?: React.RefObject<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (nextFieldRef?.current) {
+        nextFieldRef.current.focus();
+      }
+    }
+  };
+
+  // Refs for form fields
+  const salespersonInputRef = React.useRef<HTMLInputElement>(null);
+  const customerInputRef = React.useRef<HTMLInputElement>(null);
+  const productInputRef = React.useRef<HTMLInputElement>(null);
+  const quantityInputRef = React.useRef<HTMLInputElement>(null);
+  const unitPriceInputRef = React.useRef<HTMLInputElement>(null);
+
+  // State for keyboard navigation in dropdowns
+  const [selectedProductIndex, setSelectedProductIndex] = React.useState(-1);
+  const [selectedSalespersonIndex, setSelectedSalespersonIndex] = React.useState(-1);
+  const [selectedCustomerIndex, setSelectedCustomerIndex] = React.useState(-1);
+
   // Handle autocomplete selections
   const handleSalespersonSelect = (salesperson: any) => {
     setSelectedSalesperson(salesperson.id);
     setSalespersonSearch(salesperson.name);
     setShowSalespersonDropdown(false);
+    // Focus next field
+    setTimeout(() => customerInputRef.current?.focus(), 100);
   };
 
   const handleCustomerSelect = (customer: any) => {
     setSelectedCustomer(customer.id);
     setCustomerSearch(customer.name);
     setShowCustomerDropdown(false);
+    // Focus next field
+    setTimeout(() => productInputRef.current?.focus(), 100);
   };
 
   const handleProductSelect = (product: any) => {
     setSelectedProduct(product.id);
-    if (productType === "final" || productType === "warranty") {
-      setProductSearch(product.item_name);
-    } else {
-      setProductSearch(product.name);
-    }
     setShowProductDropdown(false);
+    setSelectedProductIndex(-1);
     
-    // Limpar o campo de busca após seleção
+    // Limpar completamente o campo de busca imediatamente
+    setProductSearch("");
+    
+    // Focus next field based on product type
     setTimeout(() => {
-      setProductSearch("");
+      if (productType === "warranty") {
+        quantityInputRef.current?.focus();
+      } else if (!isMultiProductMode) {
+        quantityInputRef.current?.focus();
+      }
     }, 100);
 
     // Se o modo multi-produto estiver ativo e não for garantia, adicionar automaticamente à lista de produtos selecionados
@@ -2218,12 +2356,63 @@ const SalesDashboard = ({
                 </Label>
                 <div className="relative">
                   <Input
+                    ref={salespersonInputRef}
                     value={salespersonSearch}
                     onChange={(e) => {
                       setSalespersonSearch(e.target.value);
                       setShowSalespersonDropdown(e.target.value.length > 0);
+                      setSelectedSalespersonIndex(-1); // Reset selection when typing
                       if (!e.target.value) {
                         setSelectedSalesperson("");
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        if (filteredSalespeople.length > 0) {
+                          const newIndex = selectedSalespersonIndex < filteredSalespeople.length - 1 ? selectedSalespersonIndex + 1 : 0;
+                          setSelectedSalespersonIndex(newIndex);
+                          
+                          // Auto-scroll to keep selected item visible
+                          setTimeout(() => {
+                            const dropdown = document.querySelector('.absolute.z-50.w-full.mt-1.bg-factory-800');
+                            const selectedItem = dropdown?.children[newIndex] as HTMLElement;
+                            if (selectedItem && dropdown) {
+                              selectedItem.scrollIntoView({ 
+                                behavior: 'smooth', 
+                                block: 'nearest' 
+                              });
+                            }
+                          }, 0);
+                        }
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        if (filteredSalespeople.length > 0) {
+                          const newIndex = selectedSalespersonIndex > 0 ? selectedSalespersonIndex - 1 : filteredSalespeople.length - 1;
+                          setSelectedSalespersonIndex(newIndex);
+                          
+                          // Auto-scroll to keep selected item visible
+                          setTimeout(() => {
+                            const dropdown = document.querySelector('.absolute.z-50.w-full.mt-1.bg-factory-800');
+                            const selectedItem = dropdown?.children[newIndex] as HTMLElement;
+                            if (selectedItem && dropdown) {
+                              selectedItem.scrollIntoView({ 
+                                behavior: 'smooth', 
+                                block: 'nearest' 
+                              });
+                            }
+                          }, 0);
+                        }
+                      } else if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (selectedSalespersonIndex >= 0 && filteredSalespeople[selectedSalespersonIndex]) {
+                          handleSalespersonSelect(filteredSalespeople[selectedSalespersonIndex]);
+                        } else {
+                          customerInputRef.current?.focus();
+                        }
+                      } else if (e.key === 'Escape') {
+                        setShowSalespersonDropdown(false);
+                        setSelectedSalespersonIndex(-1);
                       }
                     }}
                     className="bg-factory-700/50 border-tire-600/30 text-white h-12 pr-10"
@@ -2233,18 +2422,25 @@ const SalesDashboard = ({
                 </div>
                 {showSalespersonDropdown && filteredSalespeople.length > 0 && (
                   <div className="absolute z-50 w-full mt-1 bg-factory-800 border border-tire-600/30 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    {filteredSalespeople.map((person) => (
-                      <div
-                        key={person.id}
-                        onClick={() => handleSalespersonSelect(person)}
-                        className="p-3 hover:bg-tire-700/50 cursor-pointer text-white border-b border-tire-600/20 last:border-b-0"
-                      >
-                        <div className="font-medium">{person.name}</div>
-                        <div className="text-sm text-tire-400">
-                          {formatPercentage(person.commission_rate)} comissão
+                    {filteredSalespeople.map((person, index) => {
+                      const isSelected = index === selectedSalespersonIndex;
+                      return (
+                        <div
+                          key={person.id}
+                          onClick={() => handleSalespersonSelect(person)}
+                          className={`p-3 cursor-pointer text-white border-b border-tire-600/20 last:border-b-0 ${
+                            isSelected 
+                              ? 'bg-neon-blue/20 border-neon-blue/50' 
+                              : 'hover:bg-tire-700/50'
+                          }`}
+                        >
+                          <div className="font-medium">{person.name}</div>
+                          <div className="text-sm text-tire-400">
+                            {formatPercentage(person.commission_rate)} comissão
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
                 {showSalespersonDropdown &&
@@ -2265,12 +2461,63 @@ const SalesDashboard = ({
                 </Label>
                 <div className="relative">
                   <Input
+                    ref={customerInputRef}
                     value={customerSearch}
                     onChange={(e) => {
                       setCustomerSearch(e.target.value);
                       setShowCustomerDropdown(e.target.value.length > 0);
+                      setSelectedCustomerIndex(-1); // Reset selection when typing
                       if (!e.target.value) {
                         setSelectedCustomer("");
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        if (filteredCustomers.length > 0) {
+                          const newIndex = selectedCustomerIndex < filteredCustomers.length - 1 ? selectedCustomerIndex + 1 : 0;
+                          setSelectedCustomerIndex(newIndex);
+                          
+                          // Auto-scroll to keep selected item visible
+                          setTimeout(() => {
+                            const dropdown = document.querySelector('.absolute.z-50.w-full.mt-1.bg-factory-800');
+                            const selectedItem = dropdown?.children[newIndex] as HTMLElement;
+                            if (selectedItem && dropdown) {
+                              selectedItem.scrollIntoView({ 
+                                behavior: 'smooth', 
+                                block: 'nearest' 
+                              });
+                            }
+                          }, 0);
+                        }
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        if (filteredCustomers.length > 0) {
+                          const newIndex = selectedCustomerIndex > 0 ? selectedCustomerIndex - 1 : filteredCustomers.length - 1;
+                          setSelectedCustomerIndex(newIndex);
+                          
+                          // Auto-scroll to keep selected item visible
+                          setTimeout(() => {
+                            const dropdown = document.querySelector('.absolute.z-50.w-full.mt-1.bg-factory-800');
+                            const selectedItem = dropdown?.children[newIndex] as HTMLElement;
+                            if (selectedItem && dropdown) {
+                              selectedItem.scrollIntoView({ 
+                                behavior: 'smooth', 
+                                block: 'nearest' 
+                              });
+                            }
+                          }, 0);
+                        }
+                      } else if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (selectedCustomerIndex >= 0 && filteredCustomers[selectedCustomerIndex]) {
+                          handleCustomerSelect(filteredCustomers[selectedCustomerIndex]);
+                        } else {
+                          productInputRef.current?.focus();
+                        }
+                      } else if (e.key === 'Escape') {
+                        setShowCustomerDropdown(false);
+                        setSelectedCustomerIndex(-1);
                       }
                     }}
                     className="bg-factory-700/50 border-tire-600/30 text-white h-12 pr-10"
@@ -2280,24 +2527,31 @@ const SalesDashboard = ({
                 </div>
                 {showCustomerDropdown && filteredCustomers.length > 0 && (
                   <div className="absolute z-50 w-full mt-1 bg-factory-800 border border-tire-600/30 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    {filteredCustomers.map((customer) => (
-                      <div
-                        key={customer.id}
-                        onClick={() => handleCustomerSelect(customer)}
-                        className="p-3 hover:bg-tire-700/50 cursor-pointer text-white border-b border-tire-600/20 last:border-b-0"
-                      >
-                        <div className="font-medium">{customer.name}</div>
-                        <div className="text-sm text-tire-400">
-                          {customer.document && `${customer.document}`}
-                          {customer.warranty_count &&
-                            customer.warranty_count > 0 && (
-                              <span className="ml-2 text-purple-400">
-                                ({customer.warranty_count} garantias)
-                              </span>
-                            )}
+                    {filteredCustomers.map((customer, index) => {
+                      const isSelected = index === selectedCustomerIndex;
+                      return (
+                        <div
+                          key={customer.id}
+                          onClick={() => handleCustomerSelect(customer)}
+                          className={`p-3 cursor-pointer text-white border-b border-tire-600/20 last:border-b-0 ${
+                            isSelected 
+                              ? 'bg-neon-blue/20 border-neon-blue/50' 
+                              : 'hover:bg-tire-700/50'
+                          }`}
+                        >
+                          <div className="font-medium">{customer.name}</div>
+                          <div className="text-sm text-tire-400">
+                            {customer.document && `${customer.document}`}
+                            {customer.warranty_count &&
+                              customer.warranty_count > 0 && (
+                                <span className="ml-2 text-purple-400">
+                                  ({customer.warranty_count} garantias)
+                                </span>
+                              )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
                 {showCustomerDropdown &&
@@ -2400,12 +2654,77 @@ const SalesDashboard = ({
                 </Label>
                 <div className="relative">
                   <Input
+                    ref={productInputRef}
                     value={productSearch}
                     onChange={(e) => {
                       setProductSearch(e.target.value);
                       setShowProductDropdown(e.target.value.length > 0);
+                      setSelectedProductIndex(-1); // Reset selection when typing
                       if (!e.target.value) {
                         setSelectedProduct("");
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        if (filteredPOSProducts.length > 0) {
+                          const newIndex = selectedProductIndex < filteredPOSProducts.length - 1 ? selectedProductIndex + 1 : 0;
+                          setSelectedProductIndex(newIndex);
+                          
+                          // Auto-scroll to keep selected item visible
+                          setTimeout(() => {
+                            const dropdown = document.querySelector('.absolute.z-50.w-full.mt-1.bg-factory-800');
+                            const selectedItem = dropdown?.children[newIndex] as HTMLElement;
+                            if (selectedItem && dropdown) {
+                              selectedItem.scrollIntoView({ 
+                                behavior: 'smooth', 
+                                block: 'nearest' 
+                              });
+                            }
+                          }, 0);
+                        }
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        if (filteredPOSProducts.length > 0) {
+                          const newIndex = selectedProductIndex > 0 ? selectedProductIndex - 1 : filteredPOSProducts.length - 1;
+                          setSelectedProductIndex(newIndex);
+                          
+                          // Auto-scroll to keep selected item visible
+                          setTimeout(() => {
+                            const dropdown = document.querySelector('.absolute.z-50.w-full.mt-1.bg-factory-800');
+                            const selectedItem = dropdown?.children[newIndex] as HTMLElement;
+                            if (selectedItem && dropdown) {
+                              selectedItem.scrollIntoView({ 
+                                behavior: 'smooth', 
+                                block: 'nearest' 
+                              });
+                            }
+                          }, 0);
+                        }
+                      } else if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (selectedProductIndex >= 0 && filteredPOSProducts[selectedProductIndex]) {
+                          handleProductSelect(filteredPOSProducts[selectedProductIndex]);
+                        } else if (productType === "warranty") {
+                          quantityInputRef.current?.focus();
+                        } else if (!isMultiProductMode) {
+                          quantityInputRef.current?.focus();
+                        } else if (isMultiProductMode && productSearch.trim() === "") {
+                          // Se estiver no modo multi-produto e o campo estiver vazio, focar no campo de quantidade do primeiro produto
+                          const firstQuantityInput = document.querySelector('[data-product-item] input[type="number"][step="1"]') as HTMLInputElement;
+                          if (firstQuantityInput) {
+                            firstQuantityInput.focus();
+                          } else {
+                            // Se não houver produtos no carrinho, focar no botão de confirmar
+                            const confirmButton = document.querySelector('[data-confirm-button]') as HTMLElement;
+                            if (confirmButton) {
+                              confirmButton.focus();
+                            }
+                          }
+                        }
+                      } else if (e.key === 'Escape') {
+                        setShowProductDropdown(false);
+                        setSelectedProductIndex(-1);
                       }
                     }}
                     className="bg-factory-700/50 border-tire-600/30 text-white h-12 pr-10"
@@ -2414,8 +2733,9 @@ const SalesDashboard = ({
                   <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-tire-400" />
                 </div>
                 {showProductDropdown && filteredPOSProducts.length > 0 && (
-                  <div className="absolute z-50 w-full mt-1 bg-factory-800 border border-tire-600/30 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    {filteredPOSProducts.map((product) => {
+                  <div className="absolute z-50 mt-1 bg-factory-800 border border-tire-600/30 rounded-lg shadow-lg overflow-y-auto" style={{width: '300px', maxHeight: '180px'}}>
+                    {filteredPOSProducts.map((product, index) => {
+                      const isSelected = index === selectedProductIndex;
                       if (
                         productType === "final" ||
                         productType === "warranty"
@@ -2424,14 +2744,15 @@ const SalesDashboard = ({
                           <div
                             key={product.id}
                             onClick={() => handleProductSelect(product)}
-                            className="p-3 hover:bg-tire-700/50 cursor-pointer text-white border-b border-tire-600/20 last:border-b-0"
+                            className={`cursor-pointer text-white border-b border-tire-600/20 last:border-b-0 flex items-center ${
+                              isSelected 
+                                ? 'bg-neon-blue/20 border-neon-blue/50' 
+                                : 'hover:bg-tire-700/50'
+                            }`}
+                            style={{height: '45px', paddingLeft: '12px', paddingRight: '12px'}}
                           >
-                            <div className="font-medium">
+                            <div className="text-sm font-medium truncate">
                               {product.item_name}
-                            </div>
-                            <div className="text-sm text-tire-400">
-                              Estoque: {product.quantity.toFixed(0)}{" "}
-                              {product.unit}
                             </div>
                           </div>
                         );
@@ -2446,12 +2767,14 @@ const SalesDashboard = ({
                           <div
                             key={product.id}
                             onClick={() => handleProductSelect(product)}
-                            className="p-3 hover:bg-tire-700/50 cursor-pointer text-white border-b border-tire-600/20 last:border-b-0"
+                            className={`cursor-pointer text-white border-b border-tire-600/20 last:border-b-0 flex items-center ${
+                              isSelected 
+                                ? 'bg-neon-blue/20 border-neon-blue/50' 
+                                : 'hover:bg-tire-700/50'
+                            }`}
+                            style={{height: '45px', paddingLeft: '12px', paddingRight: '12px'}}
                           >
-                            <div className="font-medium">{product.name}</div>
-                            <div className="text-sm text-tire-400">
-                              Estoque: {stockQuantity.toFixed(0)} {product.unit}
-                            </div>
+                            <div className="text-sm font-medium truncate">{product.name}</div>
                           </div>
                         );
                       }
@@ -2551,12 +2874,23 @@ const SalesDashboard = ({
                     5. Quantidade *
                   </Label>
                   <Input
+                    ref={quantityInputRef}
                     id="quantity"
                     type="number"
                     step="1"
                     min="1"
                     value={quantity}
                     onChange={(e) => setQuantity(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        // For warranty, focus confirm button or next logical field
+                        const confirmButton = document.querySelector('[data-confirm-button]') as HTMLButtonElement;
+                        if (confirmButton) {
+                          confirmButton.focus();
+                        }
+                      }
+                    }}
                     onWheel={(e) => e.currentTarget.blur()}
                     className="bg-factory-700/50 border-tire-600/30 text-white h-12 text-lg [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [-moz-appearance:textfield]"
                     placeholder="Quantidade para garantia"
@@ -2682,7 +3016,7 @@ const SalesDashboard = ({
                       {/* Table Rows */}
                       <div className="space-y-2 max-h-60 overflow-y-auto">
                         {productCart.map((item, index) => (
-                          <div key={item.id} className="grid grid-cols-12 gap-2 p-3 bg-factory-700/30 rounded-lg border border-tire-600/20 items-center">
+                          <div key={item.id} data-product-item tabIndex={0} className="grid grid-cols-12 gap-2 p-3 bg-factory-700/30 rounded-lg border border-tire-600/20 items-center focus:outline-none focus:ring-2 focus:ring-neon-blue/50 focus:border-neon-blue/50">
                             {/* Product Name */}
                             <div className="col-span-5">
                               <p className="text-white font-medium text-sm">{item.name}</p>
@@ -2701,6 +3035,17 @@ const SalesDashboard = ({
                                 min="1"
                                 value={item.quantity || ""}
                                 onChange={(e) => updateProductInCart(item.id, 'quantity', parseFloat(e.target.value) || 0)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    // Focus next unit price input in the same row
+                                    const currentRow = e.currentTarget.closest('.grid');
+                                    const unitPriceInput = currentRow?.querySelector('input[step="0.01"]') as HTMLInputElement;
+                                    if (unitPriceInput) {
+                                      unitPriceInput.focus();
+                                    }
+                                  }
+                                }}
                                 onWheel={(e) => e.currentTarget.blur()}
                                 className="bg-factory-600/50 border-neon-blue/30 text-white h-10 text-center [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [-moz-appearance:textfield]"
                                 placeholder="0"
@@ -2715,6 +3060,29 @@ const SalesDashboard = ({
                                 min="0"
                                 value={item.unitPrice || ""}
                                 onChange={(e) => updateProductInCart(item.id, 'unitPrice', parseFloat(e.target.value) || 0)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    // Find next quantity input in the next row, or focus confirm button if this is the last row
+                                    const allRows = document.querySelectorAll('.grid.grid-cols-12');
+                                    const currentRowIndex = Array.from(allRows).findIndex(row => row.contains(e.currentTarget));
+                                    const nextRow = allRows[currentRowIndex + 1];
+                                    
+                                    if (nextRow) {
+                                      // Focus quantity input in next row
+                                      const nextQuantityInput = nextRow.querySelector('input[step="1"]') as HTMLInputElement;
+                                      if (nextQuantityInput) {
+                                        nextQuantityInput.focus();
+                                      }
+                                    } else {
+                                      // This is the last row, focus confirm button
+                                      const confirmButton = document.querySelector('[data-confirm-button]') as HTMLButtonElement;
+                                      if (confirmButton) {
+                                        confirmButton.focus();
+                                      }
+                                    }
+                                  }
+                                }}
                                 onWheel={(e) => e.currentTarget.blur()}
                                 className="bg-factory-600/50 border-neon-green/30 text-white h-10 text-center [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [-moz-appearance:textfield]"
                                 placeholder="0,00"
@@ -2956,6 +3324,7 @@ const SalesDashboard = ({
 
               {/* Confirm Button */}
               <Button
+                data-confirm-button
                 onClick={isMultiProductMode && productType !== "warranty" ? handleMultiProductSale : handleConfirmSale}
                 disabled={
                   isProcessingSale ||
@@ -3343,97 +3712,196 @@ const SalesDashboard = ({
                     </p>
                   </div>
                 ) : (
-                  finalProductSalesHistory.map((sale) => (
-                    <div
-                      key={sale.id}
-                      className="p-4 bg-factory-700/30 rounded-lg border border-tire-600/20"
-                    >
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex-1">
-                          <h4 className="text-white font-medium mb-1">
-                            {sale.reference_name}
-                          </h4>
-                          <div className="flex items-center gap-4 text-tire-400 text-sm">
-                            <div className="flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
-                              <span>
-                                {new Date(
-                                  sale.transaction_date,
-                                ).toLocaleDateString("pt-BR")}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <DollarSign className="h-3 w-3" />
-                              <span className="text-neon-green font-bold">
-                                {formatCurrency(getDisplayAmount(sale))}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <span className="text-xs">
-                                {getPaymentMethodIcon(extractPaymentMethodFromSale(sale.description || ""))}
-                              </span>
-                              <span className="text-xs bg-factory-600/50 px-2 py-1 rounded text-white font-medium">
-                                {extractPaymentMethodFromSale(sale.description || "")}
-                              </span>
+                  (() => {
+                    // Agrupar vendas por transação consolidada (data + cliente + método de pagamento)
+                    const salesByTransaction = finalProductSalesHistory.reduce((groups, sale) => {
+                      // Extrair nome do cliente limpo (remover prefixos como "VENDA MULTI-PRODUTO PARA")
+                      const cleanClientName = (sale.reference_name || "Cliente não identificado")
+                        .replace(/^VENDA MULTI-PRODUTO PARA\s+/i, "")
+                        .replace(/\s+-\s+.*$/, ""); // Remove sufixos como " - 185 70 14"
+                      
+                      // Criar chave única para consolidar vendas do mesmo cliente/data/pagamento
+                      const transactionKey = `${sale.transaction_date}_${cleanClientName}_${extractPaymentMethodFromSale(sale.description || "")}`;
+                      
+                      if (!groups[transactionKey]) {
+                        groups[transactionKey] = {
+                          clientName: cleanClientName,
+                          date: sale.transaction_date,
+                          paymentMethod: extractPaymentMethodFromSale(sale.description || ""),
+                          sales: [],
+                          totalValue: 0
+                        };
+                      }
+                      
+                      groups[transactionKey].sales.push(sale);
+                      groups[transactionKey].totalValue += sale.amount;
+                      return groups;
+                    }, {} as Record<string, {
+                      clientName: string;
+                      date: string;
+                      paymentMethod: string;
+                      sales: typeof finalProductSalesHistory;
+                      totalValue: number;
+                    }>);
+
+                    // Ordenar transações por data (mais recente primeiro)
+                    const sortedTransactions = Object.entries(salesByTransaction)
+                      .map(([key, transaction]) => ({ key, ...transaction }))
+                      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+                    return sortedTransactions.map(({ key, clientName, date, paymentMethod, sales, totalValue }) => (
+                      <div
+                        key={key}
+                        className="p-4 bg-factory-700/30 rounded-lg border border-tire-600/20 mb-3"
+                      >
+                        {/* Cabeçalho da Venda */}
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex-1">
+                            <h4 className="text-white font-medium mb-1 flex items-center gap-2">
+                              <span className="text-neon-blue">🛒</span>
+                              VENDA PARA {clientName.toUpperCase()}
+                            </h4>
+                            <div className="flex items-center gap-4 text-tire-400 text-sm">
+                              <div className="flex items-center gap-1">
+                                <Calendar className="h-3 w-3" />
+                                <span>
+                                  {new Date(date).toLocaleDateString("pt-BR")}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs">
+                                  {getPaymentMethodIcon(paymentMethod)}
+                                </span>
+                                <span className="text-xs bg-factory-600/50 px-2 py-1 rounded text-white font-medium">
+                                  {paymentMethod}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <DollarSign className="h-3 w-3" />
+                                <span className="text-neon-green font-bold">
+                                  {formatCurrency(totalValue)}
+                                </span>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {/* Botão Lançar Financeiro para vendas a prazo */}
-                          {sale.category === "venda_prazo" && sale.description && isCreditSale(sale.description) && (
+                          <div className="flex items-center gap-2">
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => {
-                                const originalValue = extractOriginalValueFromSale(sale.description || "");
-                                if (originalValue) {
-                                  handleConfirmCreditPayment(sale.id, sale.reference_name, originalValue);
-                                }
-                              }}
-                              className="text-neon-green hover:text-neon-green/80 hover:bg-neon-green/10 px-3 py-1 h-8 text-xs font-medium"
-                              title="Lançar no financeiro"
+                              onClick={() => toggleTransactionExpansion(key)}
+                              className="text-neon-blue hover:text-white hover:bg-neon-blue/20"
                             >
-                              <DollarSign className="h-3 w-3 mr-1" />
-                              Lançar Financeiro
+                              {expandedTransactions.has(key) ? "Ocultar Produtos" : "Visualizar Produtos"}
                             </Button>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() =>
-                              handleDeleteSale(sale.id, sale.reference_name)
-                            }
-                            className="text-red-400 hover:text-red-300 hover:bg-red-900/20 p-2 h-8 w-8"
-                            title="Excluir venda"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          </div>
+                        </div>
+                        
+                        {/* Lista de produtos da venda - só mostra se expandida */}
+                        {expandedTransactions.has(key) && (
+                          <div className="space-y-1 mt-3">
+                            {sales.map((sale) => {
+                              // Extrair informações do produto da descrição
+                              const productInfo = extractProductInfoFromSale(sale.description || "");
+                              const quantity = productInfo?.quantity || 0;
+                              const productDetails = sale.description || "";
+                              
+                              // Extrair nome do produto da descrição
+                              const productNameMatch = productDetails.match(/Produto:\s*([^|]+)/);
+                              const productName = productNameMatch ? productNameMatch[1].trim() : "";
+                              
+                              // Extrair valor unitário da descrição
+                              const unitPriceMatch = productDetails.match(/Preço Unit:\s*R\$\s*([0-9.,]+)/);
+                              const unitPrice = unitPriceMatch ? parseFloat(unitPriceMatch[1].replace(',', '.')) : 0;
+                              
+                              // Extrair medidas do produto (ex: 175/65 R14)
+                              const measureMatch = productDetails.match(/(\d+)\/(\d+)\s*R?(\d+)/);
+                              const measures = measureMatch ? `${measureMatch[1]} ${measureMatch[2]} ${measureMatch[3]}` : "";
+                              
+                              return (
+                                <div
+                                  key={sale.id}
+                                  className="flex items-center justify-between p-2 bg-factory-800/40 rounded text-sm border-l-2 border-neon-green/50"
+                                >
+                                  <div className="flex items-center gap-6 flex-1">
+                                    {/* Quantidade */}
+                                    <div className="text-neon-green font-bold text-lg min-w-[40px]">
+                                      {quantity > 0 ? quantity.toFixed(0) : "-"}
+                                    </div>
+                                    
+                                    {/* Nome do Produto e Valor Unitário */}
+                                    <div className="flex items-center gap-3 flex-1">
+                                      <div className="text-white font-medium">
+                                        {productName || measures || "Produto"}
+                                      </div>
+                                      <div className="text-tire-400 text-xs">
+                                        {formatCurrency(unitPrice)} / unidade
+                                      </div>
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Valor Total do Produto */}
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-neon-green font-bold text-lg">
+                                      {formatCurrency(sale.amount)}
+                                    </span>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleEditSale(sale)}
+                                      className="text-neon-blue hover:text-white hover:bg-neon-blue/20 p-1 h-6 w-6"
+                                      title="Editar produto"
+                                    >
+                                      <Edit className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Ações da Venda */}
+                        <div className="flex items-center justify-between mt-4 pt-3 border-t border-tire-600/30">
+                          <div className="text-tire-400 text-sm">
+                            {sales.length} tipo{sales.length > 1 ? 's' : ''} de produto{sales.length > 1 ? 's' : ''} • Total: {formatCurrency(totalValue)}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteSale(sales[0].id, sales[0].reference_name)}
+                              className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                            >
+                              <Trash2 className="h-4 w-4 mr-1" />
+                              Excluir Venda
+                            </Button>
+                          </div>
                         </div>
                       </div>
-                      {sale.description && (
-                        <div className="mt-2 p-2 bg-factory-700/20 rounded text-tire-300 text-sm">
-                          <p className="font-medium text-tire-200 mb-1">
-                            Detalhes:
-                          </p>
-                          <p>{sale.description}</p>
-                        </div>
-                      )}
-                      <div className="text-tire-500 text-xs mt-2">
-                        ID: {sale.id}
-                      </div>
-                    </div>
-                  ))
-                )}
+                    ));
+                  })()
+                )} 
               </div>
               {finalProductSalesHistory.length > 0 && (
                 <div className="mt-4 p-4 bg-factory-800/50 rounded-lg border border-tire-600/30">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 max-w-4xl mx-auto">
                     <div className="text-center">
                       <p className="text-tire-300 text-sm mb-1">
                         Total de Vendas
                       </p>
                       <p className="text-neon-blue font-bold text-lg">
-                        {finalProductSalesHistory.length}
+                        {(() => {
+                          // Contar vendas únicas por transação (data + cliente + método de pagamento)
+                          const uniqueTransactions = new Set();
+                          finalProductSalesHistory.forEach(sale => {
+                            const cleanClientName = (sale.reference_name || "Cliente não identificado")
+                              .replace(/^VENDA MULTI-PRODUTO PARA\s+/i, "")
+                              .replace(/\s+-\s+.*$/, "");
+                            const transactionKey = `${sale.transaction_date}_${cleanClientName}_${extractPaymentMethodFromSale(sale.description || "")}`;
+                            uniqueTransactions.add(transactionKey);
+                          });
+                          return uniqueTransactions.size;
+                        })()}
                       </p>
                     </div>
                     <div className="text-center">
@@ -3464,19 +3932,6 @@ const SalesDashboard = ({
                             0,
                           ),
                         )}
-                      </p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-tire-300 text-sm mb-1">Valor Médio</p>
-                      <p className="text-neon-purple font-bold text-lg">
-                        {finalProductSalesHistory.length > 0
-                          ? formatCurrency(
-                              finalProductSalesHistory.reduce(
-                                (sum, sale) => sum + sale.amount,
-                                0,
-                              ) / finalProductSalesHistory.length,
-                            )
-                          : formatCurrency(0)}
                       </p>
                     </div>
                   </div>
@@ -3806,98 +4261,229 @@ const SalesDashboard = ({
                     </p>
                   </div>
                 ) : (
-                  resaleProductSalesHistory.map((sale) => (
-                    <div
-                      key={sale.id}
-                      className="p-4 bg-factory-700/30 rounded-lg border border-tire-600/20"
-                    >
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex-1">
-                          <h4 className="text-white font-medium mb-1 flex items-center gap-2">
-                            <span className="text-neon-cyan">🛒</span>
-                            {sale.reference_name}
-                          </h4>
-                          <div className="flex items-center gap-4 text-tire-400 text-sm">
-                            <div className="flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
-                              <span>
-                                {new Date(
-                                  sale.transaction_date,
-                                ).toLocaleDateString("pt-BR")}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <DollarSign className="h-3 w-3" />
-                              <span className="text-neon-cyan font-bold">
-                                {formatCurrency(getDisplayAmount(sale))}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <span className="text-xs">
-                                {getPaymentMethodIcon(extractPaymentMethodFromSale(sale.description || ""))}
-                              </span>
-                              <span className="text-xs bg-factory-600/50 px-2 py-1 rounded text-white font-medium">
-                                {extractPaymentMethodFromSale(sale.description || "")}
-                              </span>
+                  (() => {
+                    // Agrupar vendas por transação consolidada (data + cliente + método de pagamento)
+                    const salesByTransaction = resaleProductSalesHistory.reduce((groups, sale) => {
+                      // Extrair nome do cliente limpo (remover prefixos como "VENDA MULTI-PRODUTO PARA")
+                      const cleanClientName = (sale.reference_name || "Cliente não identificado")
+                        .replace(/^VENDA MULTI-PRODUTO PARA\s+/i, "")
+                        .replace(/\s+-\s+.*$/, ""); // Remove sufixos como " - 185 70 14"
+                      
+                      // Criar chave única para consolidar vendas do mesmo cliente/data/pagamento
+                      const transactionKey = `${sale.transaction_date}_${cleanClientName}_${extractPaymentMethodFromSale(sale.description || "")}`;
+                      
+                      if (!groups[transactionKey]) {
+                        groups[transactionKey] = {
+                          clientName: cleanClientName,
+                          date: sale.transaction_date,
+                          paymentMethod: extractPaymentMethodFromSale(sale.description || ""),
+                          sales: [],
+                          totalValue: 0
+                        };
+                      }
+                      
+                      groups[transactionKey].sales.push(sale);
+                      groups[transactionKey].totalValue += sale.amount;
+                      return groups;
+                    }, {} as Record<string, {
+                      clientName: string;
+                      date: string;
+                      paymentMethod: string;
+                      sales: typeof resaleProductSalesHistory;
+                      totalValue: number;
+                    }>);
+
+                    // Ordenar transações por data (mais recente primeiro)
+                    const sortedTransactions = Object.entries(salesByTransaction)
+                      .map(([key, transaction]) => ({ key, ...transaction }))
+                      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+                    return sortedTransactions.map(({ key, clientName, date, paymentMethod, sales, totalValue }) => (
+                      <div
+                        key={key}
+                        className="p-4 bg-factory-700/30 rounded-lg border border-tire-600/20 mb-3"
+                      >
+                        {/* Cabeçalho da Venda */}
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex-1">
+                            <h4 className="text-white font-medium mb-1 flex items-center gap-2">
+                              <span className="text-neon-cyan">🛒</span>
+                              VENDA PARA {clientName.toUpperCase()}
+                            </h4>
+                            <div className="flex items-center gap-4 text-tire-400 text-sm">
+                              <div className="flex items-center gap-1">
+                                <Calendar className="h-3 w-3" />
+                                <span>
+                                  {new Date(date).toLocaleDateString("pt-BR")}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs">
+                                  {getPaymentMethodIcon(paymentMethod)}
+                                </span>
+                                <span className="text-xs bg-factory-600/50 px-2 py-1 rounded text-white font-medium">
+                                  {paymentMethod}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <DollarSign className="h-3 w-3" />
+                                <span className="text-neon-cyan font-bold">
+                                  {formatCurrency(totalValue)}
+                                </span>
+                              </div>
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {/* Botão Lançar Financeiro para vendas a prazo */}
-                          {sale.category === "venda_prazo" && sale.description && isCreditSale(sale.description) && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                const originalValue = extractOriginalValueFromSale(sale.description || "");
-                                if (originalValue) {
-                                  handleConfirmCreditPayment(sale.id, sale.reference_name, originalValue);
-                                }
-                              }}
-                              className="text-neon-green hover:text-neon-green/80 hover:bg-neon-green/10 px-3 py-1 h-8 text-xs font-medium"
-                              title="Lançar no financeiro"
-                            >
-                              <DollarSign className="h-3 w-3 mr-1" />
-                              Lançar Financeiro
-                            </Button>
-                          )}
+                        
+                        {/* Botão para expandir/recolher produtos */}
+                        <div className="flex items-center justify-between">
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() =>
-                              handleDeleteSale(sale.id, sale.reference_name)
-                            }
-                            className="text-red-400 hover:text-red-300 hover:bg-red-900/20 p-2 h-8 w-8"
-                            title="Excluir venda"
+                            onClick={() => toggleTransactionExpansion(key)}
+                            className="text-tire-300 hover:text-white hover:bg-tire-700/50 flex items-center gap-2"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            {expandedTransactions.has(key) ? (
+                              <>
+                                <ChevronUp className="h-4 w-4" />
+                                Ocultar Produtos
+                              </>
+                            ) : (
+                              <>
+                                <ChevronDown className="h-4 w-4" />
+                                Visualizar Produtos
+                              </>
+                            )}
                           </Button>
                         </div>
-                      </div>
-                      {sale.description && (
-                        <div className="mt-2 p-2 bg-factory-700/20 rounded text-tire-300 text-sm">
-                          <p className="font-medium text-tire-200 mb-1">
-                            Detalhes:
-                          </p>
-                          <p>{sale.description}</p>
+
+                        {/* Lista de produtos da venda - só mostra se expandido */}
+                        {expandedTransactions.has(key) && (
+                          <div className="space-y-1 mt-3">
+                            {sales.map((sale) => {
+                              // Extrair informações do produto da descrição
+                              const productInfo = extractProductInfoFromSale(sale.description || "");
+                              const quantity = productInfo?.quantity || 0;
+                              const productDetails = sale.description || "";
+                              
+                              // Extrair nome do produto da descrição
+                              const productNameMatch = productDetails.match(/Produto:\s*([^|]+)/);
+                              const productName = productNameMatch ? productNameMatch[1].trim() : "";
+                              
+                              // Extrair valor unitário da descrição
+                              const unitPriceMatch = productDetails.match(/Preço Unit:\s*R\$\s*([0-9.,]+)/);
+                              const unitPrice = unitPriceMatch ? parseFloat(unitPriceMatch[1].replace(',', '.')) : 0;
+                              
+                              return (
+                                <div
+                                  key={sale.id}
+                                  className="flex items-center justify-between p-2 bg-factory-800/40 rounded text-sm border-l-2 border-neon-cyan/50"
+                                >
+                                  <div className="flex items-center gap-6 flex-1">
+                                    {/* Quantidade */}
+                                    <div className="text-neon-green font-bold text-lg min-w-[40px]">
+                                      {quantity > 0 ? quantity.toFixed(0) : "-"}
+                                    </div>
+                                    
+                                    {/* Nome do Produto e Valor Unitário */}
+                                    <div className="flex items-center gap-3 flex-1">
+                                      <div className="text-white font-medium">
+                                        {productName || "Produto de Revenda"}
+                                      </div>
+                                      <div className="text-tire-300 text-sm font-medium">
+                                        {formatCurrency(unitPrice)}
+                                      </div>
+                                    </div>
+                                    
+                                    {/* Descrição do produto - oculta mas mantida no DOM */}
+                                    <div className="text-tire-300 text-xs flex-1 hidden">
+                                      {productDetails.split(' - ')[0] || "Produto"}
+                                    </div>
+                                  </div>
+                                  
+                                  <div className="flex items-center gap-2 ml-4">
+                                    {/* Valor total do produto */}
+                                    <div className="text-tire-300 text-sm font-medium">
+                                      {formatCurrency(getDisplayAmount(sale))}
+                                    </div>
+                                    
+                                    {/* Botão Editar Venda */}
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleEditSale(sale)}
+                                      className="text-blue-400 hover:text-blue-300 hover:bg-blue-900/20 px-1 py-1 h-6 text-xs"
+                                      title="Editar venda"
+                                    >
+                                      <Edit className="h-3 w-3" />
+                                    </Button>
+                                    
+                                    {/* Botão Lançar Financeiro para vendas a prazo */}
+                                    {sale.category === "venda_prazo" && sale.description && isCreditSale(sale.description) && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => {
+                                          const originalValue = extractOriginalValueFromSale(sale.description || "");
+                                          if (originalValue) {
+                                            handleConfirmCreditPayment(sale.id, sale.reference_name, originalValue);
+                                          }
+                                        }}
+                                        className="text-neon-green hover:text-neon-green/80 hover:bg-neon-green/10 px-1 py-1 h-6 text-xs"
+                                        title="Lançar no financeiro"
+                                      >
+                                        <DollarSign className="h-3 w-3" />
+                                      </Button>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                        
+                        {/* Ações da Venda */}
+                        <div className="flex items-center justify-between mt-4 pt-3 border-t border-tire-600/30">
+                          <div className="text-tire-400 text-sm">
+                            {sales.length} tipo{sales.length > 1 ? 's' : ''} de produto{sales.length > 1 ? 's' : ''} • Total: {formatCurrency(totalValue)}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteSale(sales[0].id, sales[0].reference_name)}
+                              className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                            >
+                              <Trash2 className="h-4 w-4 mr-1" />
+                              Excluir Venda
+                            </Button>
+                          </div>
                         </div>
-                      )}
-                      <div className="text-tire-500 text-xs mt-2">
-                        ID: {sale.id}
                       </div>
-                    </div>
-                  ))
+                    ));
+                  })()
                 )}
               </div>
               {resaleProductSalesHistory.length > 0 && (
                 <div className="mt-4 p-4 bg-factory-800/50 rounded-lg border border-tire-600/30">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 max-w-4xl mx-auto">
                     <div className="text-center">
                       <p className="text-tire-300 text-sm mb-1">
                         Total de Vendas
                       </p>
-                      <p className="text-white font-bold text-lg">
-                        {resaleProductSalesHistory.length}
+                      <p className="text-neon-green font-bold text-lg">
+                        {(() => {
+                          // Contar vendas únicas por transação (data + cliente + método de pagamento)
+                          const uniqueTransactions = new Set();
+                          resaleProductSalesHistory.forEach(sale => {
+                            const cleanClientName = (sale.reference_name || "Cliente não identificado")
+                              .replace(/^VENDA MULTI-PRODUTO PARA\s+/i, "")
+                              .replace(/\s+-\s+.*$/, "");
+                            const transactionKey = `${sale.transaction_date}_${cleanClientName}_${extractPaymentMethodFromSale(sale.description || "")}`;
+                            uniqueTransactions.add(transactionKey);
+                          });
+                          return uniqueTransactions.size;
+                        })()}
                       </p>
                     </div>
                     <div className="text-center">
@@ -3928,19 +4514,6 @@ const SalesDashboard = ({
                             0,
                           ),
                         )}
-                      </p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-tire-300 text-sm mb-1">Valor Médio</p>
-                      <p className="text-neon-purple font-bold text-lg">
-                        {resaleProductSalesHistory.length > 0
-                          ? formatCurrency(
-                              resaleProductSalesHistory.reduce(
-                                (sum, sale) => sum + sale.amount,
-                                0,
-                              ) / resaleProductSalesHistory.length,
-                            )
-                          : formatCurrency(0)}
                       </p>
                     </div>
                   </div>
@@ -4162,110 +4735,162 @@ const SalesDashboard = ({
                     </p>
                   </div>
                 ) : (
-                  filteredWarrantyEntries.map((warranty) => (
-                    <div
-                      key={warranty.id}
-                      className="p-4 bg-factory-700/30 rounded-lg border border-tire-600/20"
-                    >
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex-1">
-                          <h4 className="text-white font-medium mb-1 flex items-center gap-2">
-                            <span className="text-neon-purple">🛡️</span>
-                            Garantia - {warranty.product_name}
-                          </h4>
-                          <div className="flex items-center gap-4 text-tire-400 text-sm">
-                            <div className="flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
-                              <span>
-                                {new Date(
-                                  warranty.warranty_date,
-                                ).toLocaleDateString("pt-BR")}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Users className="h-3 w-3" />
-                              <span className="text-neon-blue">
-                                {warranty.customer_name}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <UserCheck className="h-3 w-3" />
-                              <span className="text-neon-green">
-                                {warranty.salesperson_name}
-                              </span>
+                  (() => {
+                    // Agrupar garantias por transação consolidada (data + cliente + vendedor)
+                    const warrantiesByTransaction = filteredWarrantyEntries.reduce((groups, warranty) => {
+                      // Criar chave única para consolidar garantias do mesmo cliente/data/vendedor
+                      const transactionKey = `${warranty.warranty_date}_${warranty.customer_name}_${warranty.salesperson_name}`;
+                      
+                      if (!groups[transactionKey]) {
+                        groups[transactionKey] = {
+                          clientName: warranty.customer_name,
+                          date: warranty.warranty_date,
+                          salesperson: warranty.salesperson_name,
+                          warranties: [],
+                          totalQuantity: 0,
+                          totalValue: 0
+                        };
+                      }
+                      
+                      const warrantyValue = calculateIndividualWarrantyValue(warranty);
+                      groups[transactionKey].warranties.push(warranty);
+                      groups[transactionKey].totalQuantity += warranty.quantity;
+                      groups[transactionKey].totalValue += warrantyValue;
+                      return groups;
+                    }, {} as Record<string, {
+                      clientName: string;
+                      date: string;
+                      salesperson: string;
+                      warranties: typeof filteredWarrantyEntries;
+                      totalQuantity: number;
+                      totalValue: number;
+                    }>);
+
+                    // Ordenar transações por data (mais recente primeiro)
+                    const sortedTransactions = Object.entries(warrantiesByTransaction)
+                      .map(([key, transaction]) => ({ key, ...transaction }))
+                      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+                    return sortedTransactions.map(({ key, clientName, date, salesperson, warranties, totalQuantity, totalValue }) => (
+                      <div
+                        key={key}
+                        className="p-4 bg-factory-700/30 rounded-lg border border-tire-600/20 mb-3"
+                      >
+                        {/* Cabeçalho da Garantia */}
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex-1">
+                            <h4 className="text-white font-medium mb-1 flex items-center gap-2">
+                              <span className="text-neon-purple">🛡️</span>
+                              GARANTIA PARA {clientName.toUpperCase()}
+                            </h4>
+                            <div className="flex items-center gap-4 text-tire-400 text-sm">
+                              <div className="flex items-center gap-1">
+                                <Calendar className="h-3 w-3" />
+                                <span>
+                                  {new Date(date).toLocaleDateString("pt-BR")}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <UserCheck className="h-3 w-3" />
+                                <span className="text-neon-green">
+                                  {salesperson}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <AlertTriangle className="h-3 w-3" />
+                                <span className="text-neon-purple font-bold">
+                                  {totalQuantity} unidades
+                                </span>
+                              </div>
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <div className="text-right">
-                            <div className="text-neon-purple font-bold text-lg">
-                              {warranty.quantity} unidades
-                            </div>
-                            <div className="text-tire-400 text-xs">
-                              Perda por Garantia
-                            </div>
-                            {(() => {
-                              const warrantyValue =
-                                calculateIndividualWarrantyValue(warranty);
-                              if (warrantyValue > 0) {
-                                return (
-                                  <div className="mt-1">
-                                    <div className="text-red-400 font-bold text-sm">
-                                      {formatCurrency(warrantyValue)}
-                                    </div>
-                                    <div className="text-tire-500 text-xs">
-                                      Valor de Garantia
+                        
+                        {/* Lista de produtos da garantia */}
+                        <div className="space-y-1 mt-3">
+                          {warranties.map((warranty) => {
+                            const warrantyValue = calculateIndividualWarrantyValue(warranty);
+                            
+                            return (
+                              <div
+                                key={warranty.id}
+                                className="flex items-center justify-between p-2 bg-factory-800/40 rounded text-sm border-l-2 border-neon-purple/50"
+                              >
+                                <div className="flex items-center gap-6 flex-1">
+                                  {/* Quantidade */}
+                                  <div className="text-neon-green font-bold text-lg min-w-[40px]">
+                                    {warranty.quantity}
+                                  </div>
+                                  
+                                  {/* Nome do Produto */}
+                                  <div className="flex items-center gap-3 flex-1">
+                                    <div className="text-white font-medium">
+                                      {warranty.product_name}
                                     </div>
                                   </div>
-                                );
-                              }
-                              return (
-                                <div className="mt-1">
-                                  <div className="text-tire-400 font-bold text-sm">
-                                    Receita não encontrada
-                                  </div>
-                                  <div className="text-tire-500 text-xs">
-                                    Valor não calculado
+                                  
+                                  {/* Descrição - oculta mas mantida no DOM */}
+                                  <div className="text-tire-300 text-xs flex-1 hidden">
+                                    {warranty.description || "Garantia"}
                                   </div>
                                 </div>
-                              );
-                            })()}
+                                
+                                <div className="flex items-center gap-2 ml-4">
+                                  {/* Valor da garantia */}
+                                  <div className="text-tire-300 text-sm font-medium">
+                                    {warrantyValue > 0 ? formatCurrency(warrantyValue) : "N/A"}
+                                  </div>
+                                  
+                                  {/* Botão Excluir Garantia Individual */}
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteWarranty(warranty.id, `${warranty.product_name} - ${warranty.customer_name}`)}
+                                    className="text-red-400 hover:text-red-300 hover:bg-red-900/20 px-1 py-1 h-6 text-xs"
+                                    title="Excluir garantia"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        
+                        {/* Total da garantia e botão deletar todas */}
+                        <div className="mt-3 pt-2 border-t border-tire-600/30 flex justify-between items-center text-sm">
+                          <span className="text-tire-400">
+                            {warranties.length} {warranties.length === 1 ? 'produto' : 'produtos'}
+                          </span>
+                          <div className="flex items-center gap-3">
+                            <span className="text-neon-green font-bold text-lg">
+                              TOTAL: {formatCurrency(totalValue)}
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                // Deletar todas as garantias desta transação
+                                const confirmDelete = window.confirm(
+                                  `Tem certeza que deseja excluir todas as garantias desta transação?\n\nCliente: ${clientName}\nTotal: ${formatCurrency(totalValue)}\nProdutos: ${warranties.length}`
+                                );
+                                if (confirmDelete) {
+                                  warranties.forEach(warranty => {
+                                    handleDeleteWarranty(warranty.id, `${warranty.product_name} - ${warranty.customer_name}`);
+                                  });
+                                }
+                              }}
+                              className="text-red-400 hover:text-red-300 hover:bg-red-900/20 px-2 py-1 h-7"
+                              title="Excluir todas as garantias desta transação"
+                            >
+                              <Trash2 className="h-4 w-4 mr-1" />
+                              Excluir Todas
+                            </Button>
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() =>
-                              handleDeleteWarranty(
-                                warranty.id,
-                                `${warranty.product_name} - ${warranty.customer_name}`,
-                              )
-                            }
-                            className="text-red-400 hover:text-red-300 hover:bg-red-900/20 p-2 h-8 w-8"
-                            title="Excluir garantia e devolver ao estoque"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
                         </div>
                       </div>
-                      {warranty.description && (
-                        <div className="mt-2 p-2 bg-factory-700/20 rounded text-tire-300 text-sm">
-                          <p className="font-medium text-tire-200 mb-1">
-                            Detalhes:
-                          </p>
-                          <p>{warranty.description}</p>
-                        </div>
-                      )}
-                      <div className="text-tire-500 text-xs mt-2 flex justify-between">
-                        <span>ID: {warranty.id}</span>
-                        <span>
-                          Registrado em:{" "}
-                          {new Date(warranty.created_at).toLocaleDateString(
-                            "pt-BR",
-                          )}
-                        </span>
-                      </div>
-                    </div>
-                  ))
+                    ));
+                  })()
                 )}
               </div>
               {filteredWarrantyEntries.length > 0 && (
@@ -4275,15 +4900,23 @@ const SalesDashboard = ({
                       <p className="text-tire-300 text-sm mb-1">
                         Total de Garantias
                       </p>
-                      <p className="text-neon-purple font-bold text-lg">
-                        {filteredWarrantyEntries.length}
+                      <p className="text-neon-green font-bold text-lg">
+                        {(() => {
+                          // Contar garantias únicas por transação (data + cliente + vendedor)
+                          const uniqueTransactions = new Set();
+                          filteredWarrantyEntries.forEach(warranty => {
+                            const transactionKey = `${warranty.warranty_date}_${warranty.customer_name}_${warranty.salesperson_name}`;
+                            uniqueTransactions.add(transactionKey);
+                          });
+                          return uniqueTransactions.size;
+                        })()}
                       </p>
                     </div>
                     <div className="text-center">
                       <p className="text-tire-300 text-sm mb-1">
                         Quantidade Total
                       </p>
-                      <p className="text-neon-orange font-bold text-lg">
+                      <p className="text-neon-green font-bold text-lg">
                         {filteredWarrantyEntries
                           .reduce((sum, warranty) => sum + warranty.quantity, 0)
                           .toFixed(0)}
@@ -4293,7 +4926,7 @@ const SalesDashboard = ({
                       <p className="text-tire-300 text-sm mb-1">
                         Valor de Garantia
                       </p>
-                      <p className="text-red-400 font-bold text-lg">
+                      <p className="text-neon-green font-bold text-lg">
                         {formatCurrency(totalWarrantyRevenueValue)}
                       </p>
                     </div>
@@ -4431,9 +5064,116 @@ const SalesDashboard = ({
             </CardContent>
           </Card>
         </TabsContent>
-
-
       </Tabs>
+
+      {/* Modal de Edição de Venda */}
+      {editingSale && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-factory-800 p-6 rounded-lg border border-tire-600/30 max-w-md w-full mx-4">
+            <h3 className="text-white font-bold text-lg mb-4">Editar Venda</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="text-tire-300 text-sm block mb-1">Cliente</label>
+                <input
+                  type="text"
+                  value={editSaleData.customer}
+                  onChange={(e) => setEditSaleData({...editSaleData, customer: e.target.value})}
+                  className="w-full p-2 bg-factory-700 border border-tire-600/30 rounded text-white"
+                />
+              </div>
+              
+              <div>
+                <label className="text-tire-300 text-sm block mb-1">Vendedor</label>
+                <input
+                  type="text"
+                  value={editSaleData.salesperson}
+                  onChange={(e) => setEditSaleData({...editSaleData, salesperson: e.target.value})}
+                  className="w-full p-2 bg-factory-700 border border-tire-600/30 rounded text-white"
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-tire-300 text-sm block mb-1">Quantidade</label>
+                  <input
+                    type="number"
+                    value={editSaleData.quantity}
+                    onChange={(e) => {
+                      const newQuantity = e.target.value;
+                      const unitPrice = parseFloat(editSaleData.unitPrice) || 0;
+                      const newTotal = (parseFloat(newQuantity) || 0) * unitPrice;
+                      setEditSaleData({
+                        ...editSaleData, 
+                        quantity: newQuantity,
+                        totalValue: newTotal.toString()
+                      });
+                    }}
+                    className="w-full p-2 bg-factory-700 border border-tire-600/30 rounded text-white"
+                  />
+                </div>
+                
+                <div>
+                  <label className="text-tire-300 text-sm block mb-1">Valor Unitário</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editSaleData.unitPrice}
+                    onChange={(e) => {
+                      const newUnitPrice = e.target.value;
+                      const quantity = parseFloat(editSaleData.quantity) || 0;
+                      const newTotal = quantity * (parseFloat(newUnitPrice) || 0);
+                      setEditSaleData({
+                        ...editSaleData, 
+                        unitPrice: newUnitPrice,
+                        totalValue: newTotal.toString()
+                      });
+                    }}
+                    className="w-full p-2 bg-factory-700 border border-tire-600/30 rounded text-white"
+                  />
+                </div>
+              </div>
+              
+              <div>
+                <label className="text-tire-300 text-sm block mb-1">Método de Pagamento</label>
+                <select
+                  value={editSaleData.paymentMethod}
+                  onChange={(e) => setEditSaleData({...editSaleData, paymentMethod: e.target.value})}
+                  className="w-full p-2 bg-factory-700 border border-tire-600/30 rounded text-white"
+                >
+                  <option value="DINHEIRO">DINHEIRO</option>
+                  <option value="PIX">PIX</option>
+                  <option value="CARTÃO">CARTÃO</option>
+                  <option value="A PRAZO">A PRAZO</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="text-tire-300 text-sm block mb-1">Valor Total</label>
+                <div className="text-neon-green font-bold text-lg p-2 bg-factory-700/50 rounded">
+                  {formatCurrency(parseFloat(editSaleData.totalValue) || 0)}
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex gap-3 mt-6">
+              <Button
+                onClick={handleSaveEditedSale}
+                className="flex-1 bg-neon-green text-black hover:bg-neon-green/80"
+              >
+                Salvar Alterações
+              </Button>
+              <Button
+                onClick={() => setEditingSale(null)}
+                variant="outline"
+                className="flex-1 border-tire-600/30 text-tire-300 hover:bg-factory-700"
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
