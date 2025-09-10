@@ -2733,7 +2733,7 @@ const SalesDashboard = ({
                   <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-tire-400" />
                 </div>
                 {showProductDropdown && filteredPOSProducts.length > 0 && (
-                  <div className="absolute z-50 mt-1 bg-factory-800 border border-tire-600/30 rounded-lg shadow-lg overflow-y-auto" style={{width: '300px', maxHeight: '180px'}}>
+                  <div className="absolute z-50 w-full mt-1 bg-factory-800 border border-tire-600/30 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                     {filteredPOSProducts.map((product, index) => {
                       const isSelected = index === selectedProductIndex;
                       if (
@@ -2744,15 +2744,15 @@ const SalesDashboard = ({
                           <div
                             key={product.id}
                             onClick={() => handleProductSelect(product)}
-                            className={`cursor-pointer text-white border-b border-tire-600/20 last:border-b-0 flex items-center ${
+                            className={`p-3 cursor-pointer text-white border-b border-tire-600/20 last:border-b-0 ${
                               isSelected 
                                 ? 'bg-neon-blue/20 border-neon-blue/50' 
                                 : 'hover:bg-tire-700/50'
                             }`}
-                            style={{height: '45px', paddingLeft: '12px', paddingRight: '12px'}}
                           >
-                            <div className="text-sm font-medium truncate">
-                              {product.item_name}
+                            <div className="font-medium">{product.item_name}</div>
+                            <div className="text-sm text-tire-400">
+                              Estoque: {product.quantity} unidades
                             </div>
                           </div>
                         );
@@ -2767,14 +2767,16 @@ const SalesDashboard = ({
                           <div
                             key={product.id}
                             onClick={() => handleProductSelect(product)}
-                            className={`cursor-pointer text-white border-b border-tire-600/20 last:border-b-0 flex items-center ${
+                            className={`p-3 cursor-pointer text-white border-b border-tire-600/20 last:border-b-0 ${
                               isSelected 
                                 ? 'bg-neon-blue/20 border-neon-blue/50' 
                                 : 'hover:bg-tire-700/50'
                             }`}
-                            style={{height: '45px', paddingLeft: '12px', paddingRight: '12px'}}
                           >
-                            <div className="text-sm font-medium truncate">{product.name}</div>
+                            <div className="font-medium">{product.name}</div>
+                            <div className="text-sm text-tire-400">
+                              Estoque: {stockQuantity} unidades
+                            </div>
                           </div>
                         );
                       }
