@@ -37,6 +37,7 @@ import {
   BarChart3,
   Plus,
   Edit,
+  Boxes,
 } from "lucide-react";
 import {
   BarChart,
@@ -115,6 +116,7 @@ const SalesDashboard = ({
   const [paymentMethod, setPaymentMethod] = useState<
     "DINHEIRO" | "PIX" | "CARTÃO" | "A PRAZO"
   >("DINHEIRO");
+  const [isRawMaterialMode, setIsRawMaterialMode] = useState(false);
 
   // Autocomplete states for POS
   const [salespersonSearch, setSalespersonSearch] = useState("");
@@ -129,7 +131,7 @@ const SalesDashboard = ({
   const [productCart, setProductCart] = useState<Array<{
     id: string;
     name: string;
-    type: 'final' | 'resale';
+    type: 'final' | 'resale' | 'material';
     quantity: number;
     unitPrice: number;
     totalPrice: number;
@@ -345,14 +347,14 @@ const SalesDashboard = ({
         new Date(a.transaction_date).getTime(),
     );
 
-  // Filter resale product sales history (cash flow entries with category "venda" or "venda_prazo" and product type "resale")
+  // Filter resale product sales history (cash flow entries with category "venda" or "venda_prazo" and product type "resale" or "materia_prima")
   const resaleProductSalesHistory = cashFlowEntries
     .filter(
       (entry) =>
         entry.type === "income" &&
         (entry.category === "venda" || entry.category === "venda_prazo") &&
         entry.description &&
-        entry.description.includes("TIPO_PRODUTO: revenda"),
+        (entry.description.includes("TIPO_PRODUTO: revenda") || entry.description.includes("TIPO_PRODUTO: materia_prima")),
     )
     .filter((entry) => {
       const matchesSearch =
@@ -553,8 +555,6 @@ const SalesDashboard = ({
 
   // Function to extract payment method from transaction description
   const extractPaymentMethodFromSale = (description: string): string => {
-    console.log("🔍 [DEBUG] Extracting payment method from:", description);
-    
     // Try multiple patterns to catch different formats
     let methodMatch = description.match(/Método:\s*([^|]+)/);
     if (!methodMatch) {
@@ -564,14 +564,11 @@ const SalesDashboard = ({
       methodMatch = description.match(/Método\s*:\s*([A-Z\s]+)/);
     }
     
-    const result = methodMatch ? methodMatch[1].trim() : "N/A";
-    console.log("🔍 [DEBUG] Extracted payment method:", result);
-    return result;
+    return methodMatch ? methodMatch[1].trim() : "N/A";
   };
 
   // Function to get payment method icon
   const getPaymentMethodIcon = (method: string): string => {
-    console.log("🔍 [DEBUG] Getting icon for payment method:", method);
     const cleanMethod = method.trim().toUpperCase();
     
     switch (cleanMethod) {
@@ -581,7 +578,6 @@ const SalesDashboard = ({
       case "A PRAZO": return "📅";
       case "N/A": return "❓";
       default: 
-        console.log("🔍 [DEBUG] Unknown payment method, using default icon");
         return "💰";
     }
   };
@@ -714,45 +710,19 @@ const SalesDashboard = ({
       }
     }, 0);
   };
-
   const totalWarrantyRevenueValue = calculateWarrantyRevenueValue();
 
   // Calculate individual warranty value based on raw material cost from recipes
   const calculateIndividualWarrantyValue = (warranty: any) => {
-    console.log(
-      `🔍 [calculateIndividualWarrantyValue] Calculando valor individual da garantia:`,
-      {
-        id: warranty.id,
-        product_name: warranty.product_name,
-        quantity: warranty.quantity,
-      },
-    );
-
     // Find the recipe for this product
     const recipe = recipes.find(
       (r) => r.product_name === warranty.product_name && !r.archived,
     );
 
     if (recipe) {
-      console.log(`✅ [calculateIndividualWarrantyValue] Receita encontrada:`, {
-        recipe_id: recipe.id,
-        product_name: recipe.product_name,
-        materials_count: recipe.materials.length,
-      });
-
       // Calculate total material cost for this recipe
       const recipeMaterialCost = recipe.materials.reduce(
         (materialTotal, recipeMaterial) => {
-          console.log(
-            `🔍 [calculateIndividualWarrantyValue] Processando material da receita:`,
-            {
-              material_id: recipeMaterial.material_id,
-              material_name: recipeMaterial.material_name,
-              quantity_needed: recipeMaterial.quantity_needed,
-              unit: recipeMaterial.unit,
-            },
-          );
-
           // Find the material cost in stock items (raw materials)
           const materialInStock = stockItems.find(
             (item) =>
@@ -763,53 +733,17 @@ const SalesDashboard = ({
           if (materialInStock) {
             const materialCost =
               recipeMaterial.quantity_needed * materialInStock.unit_cost;
-            console.log(
-              `✅ [calculateIndividualWarrantyValue] Custo do material calculado:`,
-              {
-                material_name: recipeMaterial.material_name,
-                quantity_needed: recipeMaterial.quantity_needed,
-                unit_cost: materialInStock.unit_cost,
-                total_cost: materialCost,
-              },
-            );
             return materialTotal + materialCost;
-          } else {
-            console.warn(
-              `⚠️ [calculateIndividualWarrantyValue] Material não encontrado no estoque:`,
-              {
-                material_id: recipeMaterial.material_id,
-                material_name: recipeMaterial.material_name,
-              },
-            );
-            return materialTotal;
           }
+          return materialTotal;
         },
         0,
       );
 
       // Calculate warranty value: quantity × recipe material cost
-      const warrantyValue = warranty.quantity * recipeMaterialCost;
-      console.log(
-        `💰 [calculateIndividualWarrantyValue] Valor individual da garantia calculado:`,
-        {
-          product_name: warranty.product_name,
-          warranty_quantity: warranty.quantity,
-          recipe_material_cost: recipeMaterialCost,
-          warranty_value: warrantyValue,
-        },
-      );
-
-      return warrantyValue;
-    } else {
-      console.warn(
-        `⚠️ [calculateIndividualWarrantyValue] Receita não encontrada para o produto:`,
-        {
-          product_name: warranty.product_name,
-          available_recipes: recipes.map((r) => r.product_name),
-        },
-      );
-      return 0;
+      return warranty.quantity * recipeMaterialCost;
     }
+    return 0;
   };
 
   // Clear unit price when product is changed (manual input only)
@@ -827,7 +761,19 @@ const SalesDashboard = ({
     setQuantity("");
     setSaleValue("");
     setShowProductDropdown(false);
+    setIsRawMaterialMode(false); // Reset raw material mode when changing product type
   }, [productType]);
+
+  // Reset form when raw material mode changes
+  useEffect(() => {
+    setSelectedProduct("");
+    setProductSearch("");
+    setUnitPrice("");
+    setQuantity("");
+    setSaleValue("");
+    setShowProductDropdown(false);
+    setProductCart([]); // Clear cart when switching modes
+  }, [isRawMaterialMode]);
 
   // Calculate sale value automatically based on unit price and quantity (only for regular sales)
   useEffect(() => {
@@ -849,6 +795,14 @@ const SalesDashboard = ({
 
   // Handle sale/warranty confirmation
   const handleConfirmSale = async () => {
+    console.log("🚀 [handleConfirmSale] Função chamada com:", {
+      productType: productType,
+      isRawMaterialMode: isRawMaterialMode,
+      selectedProduct: selectedProduct,
+      resaleProductDefined: !!resaleProduct,
+      availableResaleProducts: availableResaleProducts.length
+    });
+    
     // Validation for warranty vs regular sale
     if (productType === "warranty") {
       if (
@@ -888,6 +842,13 @@ const SalesDashboard = ({
     } else if (productType === "resale") {
       resaleProduct =
         availableResaleProducts.find((p) => p.id === selectedProduct) || null;
+      
+      console.log("📦 [handleConfirmSale] Resultado da busca de resaleProduct:", {
+        resaleProductFound: !!resaleProduct,
+        resaleProductId: resaleProduct?.id,
+        resaleProductName: resaleProduct?.name,
+        isRawMaterialMode: isRawMaterialMode
+      });
     }
 
     const customer = activeCustomers.find((c) => c.id === selectedCustomer);
@@ -908,7 +869,7 @@ const SalesDashboard = ({
         );
         return;
       }
-    } else if (productType === "resale" && resaleProduct) {
+    } else if (productType === "resale") {
       // Get stock quantity from stock_items table for resale products
       const stockItem = stockItems.find(
         (item) =>
@@ -1078,81 +1039,214 @@ const SalesDashboard = ({
               newTotalValue: newTotalValue,
             },
           );
-        } else if (productType === "resale" && resaleProduct) {
-          // Resale product sale - ALWAYS mark with TIPO_PRODUTO: revenda
-          // WORKAROUND: Add +1 day to compensate Supabase UTC conversion
-          const today = new Date();
-          const tomorrow = new Date(today);
-          tomorrow.setDate(today.getDate() + 1);
-          const todayLocal = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
-          console.log("🗓️ [SALES DEBUG] Registrando venda produto revenda:", {
-            originalDate: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`,
-            dateUsed: todayLocal,
-            note: "WORKAROUND: Adding +1 day to compensate Supabase UTC conversion"
-          });
-          
-          // Only register in cash flow if not a credit sale
-          if (paymentMethod !== "A PRAZO") {
-            await addCashFlowEntry({
-              type: "income",
-              category: "venda",
-              reference_name: `Venda para ${customer.name} - ${resaleProduct.name}`,
-              amount: parseFloat(saleValue),
-              description: `TIPO_PRODUTO: revenda | Vendedor: ${salesperson.name} | Produto: ${resaleProduct.name} | Qtd: ${quantity} ${resaleProduct.unit} | Preço Unit: ${formatCurrency(parseFloat(unitPrice))} | Método: ${paymentMethod} | ID_Produto: ${resaleProduct.id}`,
-              transaction_date: todayLocal,
-            });
-          } else {
-            // For credit sales, create a pending sale entry that will be added to cash flow when payment is received
-            await addCashFlowEntry({
-              type: "income",
-              category: "venda_prazo",
-              reference_name: `[PENDENTE] Venda para ${customer.name} - ${resaleProduct.name}`,
-              amount: 0,
-              description: `TIPO_PRODUTO: revenda | Vendedor: ${salesperson.name} | Produto: ${resaleProduct.name} | Qtd: ${quantity} ${resaleProduct.unit} | Preço Unit: ${formatCurrency(parseFloat(unitPrice))} | Método: A PRAZO | ID_Produto: ${resaleProduct.id} | Valor_Original: ${saleValue} | Status: PENDENTE`,
-              transaction_date: todayLocal,
+        } else if (productType === "resale") {
+          // Check if it's a raw material sale or resale product sale
+          if (isRawMaterialMode) {
+            // Raw material sale - mark with TIPO_PRODUTO: materia_prima and register in resale history
+            const rawMaterial = availableRawMaterials.find((m) => m.id === selectedProduct);
+            
+            if (!rawMaterial) {
+              alert("Erro: Matéria-prima não encontrada.");
+              return;
+            }
+            
+            // Check stock availability for raw material
+            if (parseFloat(quantity) > rawMaterial.quantity) {
+              alert(
+                `Estoque insuficiente. Disponível: ${rawMaterial.quantity.toFixed(2)} ${rawMaterial.unit}`,
+              );
+              return;
+            }
+            
+            // WORKAROUND: Add +1 day to compensate Supabase UTC conversion
+            const today = new Date();
+            const tomorrow = new Date(today);
+            tomorrow.setDate(today.getDate() + 1);
+            const todayLocal = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
+            console.log("🗓️ [SALES DEBUG] Registrando venda matéria-prima:", {
+              originalDate: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`,
+              dateUsed: todayLocal,
+              note: "WORKAROUND: Adding +1 day to compensate Supabase UTC conversion"
             });
             
-            console.log(`💳 [CREDIT SALE] Venda a prazo registrada como pendente:`, {
-              customer: customer.name,
-              product: resaleProduct.name,
-              value: parseFloat(saleValue),
-              paymentMethod: "A PRAZO",
-              status: "PENDENTE"
-            });
-          }
-
-          // Update resale product stock in stock_items table
-          const stockItem = stockItems.find(
-            (item) =>
-              item.item_id === resaleProduct.id && item.item_type === "product",
-          );
-
-          if (stockItem) {
-            const newQuantity = stockItem.quantity - parseFloat(quantity);
-            const newTotalValue = newQuantity * stockItem.unit_cost;
-
-            await updateStockItem(stockItem.id, {
+            // Register in cash flow with materia_prima tag (appears in resale history)
+            if (paymentMethod !== "A PRAZO") {
+              await addCashFlowEntry({
+                type: "income",
+                category: "venda",
+                reference_name: `Venda para ${customer.name} - ${rawMaterial.item_name}`,
+                amount: parseFloat(saleValue),
+                description: `TIPO_PRODUTO: materia_prima | Vendedor: ${salesperson.name} | Produto: ${rawMaterial.item_name} | Qtd: ${quantity} ${rawMaterial.unit} | Preço Unit: ${formatCurrency(parseFloat(unitPrice))} | Método: ${paymentMethod} | ID_Produto: ${rawMaterial.id}`,
+                transaction_date: todayLocal,
+              });
+            } else {
+              // For credit sales
+              await addCashFlowEntry({
+                type: "income",
+                category: "venda_prazo",
+                reference_name: `[PENDENTE] Venda para ${customer.name} - ${rawMaterial.item_name}`,
+                amount: 0,
+                description: `TIPO_PRODUTO: materia_prima | Vendedor: ${salesperson.name} | Produto: ${rawMaterial.item_name} | Qtd: ${quantity} ${rawMaterial.unit} | Preço Unit: ${formatCurrency(parseFloat(unitPrice))} | Método: A PRAZO | ID_Produto: ${rawMaterial.id} | Valor_Original: ${saleValue} | Status: PENDENTE`,
+                transaction_date: todayLocal,
+              });
+              
+              console.log(`💳 [CREDIT SALE] Venda a prazo de matéria-prima registrada como pendente:`, {
+                customer: customer.name,
+                product: rawMaterial.item_name,
+                value: parseFloat(saleValue),
+                paymentMethod: "A PRAZO",
+                status: "PENDENTE"
+              });
+            }
+            
+            // Update raw material stock
+            const newQuantity = rawMaterial.quantity - parseFloat(quantity);
+            const newTotalValue = newQuantity * rawMaterial.unit_cost;
+            
+            await updateStockItem(rawMaterial.id, {
               quantity: newQuantity,
               total_value: newTotalValue,
               last_updated: new Date().toISOString(),
             });
-
+            
             console.log(
-              `✅ [SalesDashboard] Estoque de produto de revenda atualizado:`,
+              `✅ [SalesDashboard] Estoque de matéria-prima atualizado:`,
               {
-                productId: resaleProduct.id,
-                productName: resaleProduct.name,
-                stockItemId: stockItem.id,
-                previousQuantity: stockItem.quantity,
+                materialId: rawMaterial.id,
+                materialName: rawMaterial.item_name,
+                previousQuantity: rawMaterial.quantity,
                 soldQuantity: parseFloat(quantity),
                 newQuantity: newQuantity,
                 newTotalValue: newTotalValue,
               },
             );
-          } else {
-            console.warn(
-              `⚠️ [SalesDashboard] Item de estoque não encontrado para produto de revenda: ${resaleProduct.id}`,
+          } else if (resaleProduct) {
+            console.log("🎯 [RESALE SALE START] Iniciando processamento de venda de produto de revenda:", {
+              resaleProduct: {
+                id: resaleProduct.id,
+                name: resaleProduct.name
+              },
+              quantity: quantity,
+              paymentMethod: paymentMethod,
+              stockItemsAvailable: stockItems.length
+            });
+            
+            // Resale product sale - ALWAYS mark with TIPO_PRODUTO: revenda
+            // WORKAROUND: Add +1 day to compensate Supabase UTC conversion
+            const today = new Date();
+            const tomorrow = new Date(today);
+            tomorrow.setDate(today.getDate() + 1);
+            const todayLocal = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
+            console.log("🗓️ [SALES DEBUG] Registrando venda produto revenda:", {
+              originalDate: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`,
+              dateUsed: todayLocal,
+              note: "WORKAROUND: Adding +1 day to compensate Supabase UTC conversion"
+            });
+            
+            // Only register in cash flow if not a credit sale
+            if (paymentMethod !== "A PRAZO") {
+              await addCashFlowEntry({
+                type: "income",
+                category: "venda",
+                reference_name: `Venda para ${customer.name} - ${resaleProduct.name}`,
+                amount: parseFloat(saleValue),
+                description: `TIPO_PRODUTO: revenda | Vendedor: ${salesperson.name} | Produto: ${resaleProduct.name} | Qtd: ${quantity} ${resaleProduct.unit} | Preço Unit: ${formatCurrency(parseFloat(unitPrice))} | Método: ${paymentMethod} | ID_Produto: ${resaleProduct.id}`,
+                transaction_date: todayLocal,
+              });
+              
+              console.log("✅ [RESALE SALE] Cash flow registrado com sucesso! Agora vou descontar do estoque...");
+            } else {
+              // For credit sales, create a pending sale entry that will be added to cash flow when payment is received
+              await addCashFlowEntry({
+                type: "income",
+                category: "venda_prazo",
+                reference_name: `[PENDENTE] Venda para ${customer.name} - ${resaleProduct.name}`,
+                amount: 0,
+                description: `TIPO_PRODUTO: revenda | Vendedor: ${salesperson.name} | Produto: ${resaleProduct.name} | Qtd: ${quantity} ${resaleProduct.unit} | Preço Unit: ${formatCurrency(parseFloat(unitPrice))} | Método: A PRAZO | ID_Produto: ${resaleProduct.id} | Valor_Original: ${saleValue} | Status: PENDENTE`,
+                transaction_date: todayLocal,
+              });
+              
+              console.log(`💳 [CREDIT SALE] Venda a prazo registrada como pendente:`, {
+                customer: customer.name,
+                product: resaleProduct.name,
+                value: parseFloat(saleValue),
+                paymentMethod: "A PRAZO",
+                status: "PENDENTE"
+              });
+            }
+  
+            // Update resale product stock in stock_items table
+            console.log("🔍 [RESALE SALE] Buscando item de estoque:", {
+              resaleProductId: resaleProduct.id,
+              resaleProductName: resaleProduct.name,
+              totalStockItems: stockItems.length,
+              stockItemsForThisProduct: stockItems.filter(item => item.item_id === resaleProduct.id).map(item => ({
+                id: item.id,
+                item_id: item.item_id,
+                item_type: item.item_type,
+                quantity: item.quantity,
+                unit_cost: item.unit_cost
+              })),
+              allStockItemTypes: [...new Set(stockItems.map(item => item.item_type))]
+            });
+            
+            const stockItem = stockItems.find(
+              (item) =>
+                item.item_id === resaleProduct.id && item.item_type === "product",
             );
+            
+            console.log("🔍 [RESALE SALE] Resultado da busca:", {
+              found: !!stockItem,
+              stockItem: stockItem ? {
+                id: stockItem.id,
+                item_id: stockItem.item_id,
+                item_type: stockItem.item_type,
+                quantity: stockItem.quantity
+              } : null
+            });
+  
+            if (stockItem) {
+              const newQuantity = stockItem.quantity - parseFloat(quantity);
+              const newTotalValue = newQuantity * stockItem.unit_cost;
+  
+              await updateStockItem(stockItem.id, {
+                quantity: newQuantity,
+                total_value: newTotalValue,
+                last_updated: new Date().toISOString(),
+              });
+  
+              console.log(
+                `✅ [SalesDashboard] Estoque de produto de revenda atualizado:`,
+                {
+                  productId: resaleProduct.id,
+                  productName: resaleProduct.name,
+                  stockItemId: stockItem.id,
+                  previousQuantity: stockItem.quantity,
+                  soldQuantity: parseFloat(quantity),
+                  newQuantity: newQuantity,
+                  newTotalValue: newTotalValue,
+                },
+              );
+              
+              // Disparar evento de sincronização
+              window.dispatchEvent(new Event('resaleStockUpdated'));
+              window.dispatchEvent(new Event('forceChartsRefresh'));
+            } else {
+              console.error(
+                `⚠️ [SalesDashboard] Item de estoque NÃO ENCONTRADO para produto de revenda!`,
+                {
+                  productId: resaleProduct.id,
+                  productName: resaleProduct.name,
+                  searchCriteria: `item_id === ${resaleProduct.id} && item_type === "product"`,
+                  availableStockItems: stockItems.filter(item => item.item_id === resaleProduct.id).map(item => ({
+                    id: item.id,
+                    item_id: item.item_id,
+                    item_type: item.item_type,
+                    quantity: item.quantity
+                  }))
+                }
+              );
+            }
           }
         }
 
@@ -1236,7 +1330,7 @@ const SalesDashboard = ({
             category: "venda",
             reference_name: `Venda Multi-Produto para ${customer.name} - ${cartItem.name}`,
             amount: cartItem.totalPrice,
-            description: `TIPO_PRODUTO: ${cartItem.type === 'resale' ? 'revenda' : cartItem.type} | Vendedor: ${salesperson.name} | Produto: ${cartItem.name} | Qtd: ${cartItem.quantity} unidades | Preço Unit: ${formatCurrency(cartItem.unitPrice)} | Método: ${paymentMethod} | ID_Produto: ${cartItem.originalProductId}`,
+            description: `TIPO_PRODUTO: ${cartItem.type === 'resale' ? 'revenda' : cartItem.type === 'material' ? 'materia_prima' : cartItem.type} | Vendedor: ${salesperson.name} | Produto: ${cartItem.name} | Qtd: ${cartItem.quantity} unidades | Preço Unit: ${formatCurrency(cartItem.unitPrice)} | Método: ${paymentMethod} | ID_Produto: ${cartItem.originalProductId}`,
             transaction_date: todayLocal,
           });
         } else {
@@ -1246,7 +1340,7 @@ const SalesDashboard = ({
             category: "venda_prazo",
             reference_name: `[PENDENTE] Venda Multi-Produto para ${customer.name} - ${cartItem.name}`,
             amount: 0,
-            description: `TIPO_PRODUTO: ${cartItem.type === 'resale' ? 'revenda' : cartItem.type} | Vendedor: ${salesperson.name} | Produto: ${cartItem.name} | Qtd: ${cartItem.quantity} unidades | Preço Unit: ${formatCurrency(cartItem.unitPrice)} | Método: A PRAZO | ID_Produto: ${cartItem.originalProductId} | Valor_Original: ${cartItem.totalPrice} | Status: PENDENTE`,
+            description: `TIPO_PRODUTO: ${cartItem.type === 'resale' ? 'revenda' : cartItem.type === 'material' ? 'materia_prima' : cartItem.type} | Vendedor: ${salesperson.name} | Produto: ${cartItem.name} | Qtd: ${cartItem.quantity} unidades | Preço Unit: ${formatCurrency(cartItem.unitPrice)} | Método: A PRAZO | ID_Produto: ${cartItem.originalProductId} | Valor_Original: ${cartItem.totalPrice} | Status: PENDENTE`,
             transaction_date: todayLocal,
           });
           
@@ -1283,6 +1377,27 @@ const SalesDashboard = ({
               quantity: newQuantity,
               total_value: newTotalValue,
               last_updated: new Date().toISOString(),
+            });
+          }
+        } else if (cartItem.type === 'material') {
+          // Material/raw material sale - update stock from raw_materials (which are in stock_items)
+          const rawMaterial = availableRawMaterials.find((m) => m.id === cartItem.originalProductId);
+          if (rawMaterial) {
+            const newQuantity = rawMaterial.quantity - cartItem.quantity;
+            const newTotalValue = newQuantity * rawMaterial.unit_cost;
+
+            await updateStockItem(rawMaterial.id, {
+              quantity: newQuantity,
+              total_value: newTotalValue,
+              last_updated: new Date().toISOString(),
+            });
+            
+            console.log(`✅ [MULTI-PRODUCT] Estoque de matéria-prima atualizado:`, {
+              materialId: rawMaterial.id,
+              materialName: rawMaterial.item_name,
+              previousQuantity: rawMaterial.quantity,
+              soldQuantity: cartItem.quantity,
+              newQuantity: newQuantity
             });
           }
         }
@@ -1506,18 +1621,36 @@ const SalesDashboard = ({
         const sale = cashFlowEntries.find((entry) => entry.id === saleId);
         console.log('🔥 [DELETE SALE] Venda encontrada:', sale);
 
+        // Variables to track product type (declared outside for use in success message)
+        let isRawMaterial = false;
+        let isResaleProduct = false;
+        let isFinalProduct = false;
+
         if (sale && sale.description) {
-          console.log('🔥 [DELETE SALE] Descrição da venda:', sale.description);
+          console.log('🔥 [DELETE SALE] ========================================');
+          console.log('🔥 [DELETE SALE] Descrição COMPLETA da venda:', sale.description);
+          console.log('🔥 [DELETE SALE] ========================================');
           
           // Extract product info from sale description
           const productInfo = extractProductInfoFromSale(sale.description);
           console.log('🔥 [DELETE SALE] Info do produto extraída:', productInfo);
-
-          // Check if it's a resale product or final product
-          const isResaleProduct = sale.description.includes("TIPO_PRODUTO: revenda");
-          const isFinalProduct = sale.description.includes("TIPO_PRODUTO: final");
           
-          console.log('🔥 [DELETE SALE] Tipo de produto:', { isResaleProduct, isFinalProduct });
+          // Test extraction manually
+          const testIdMatch = sale.description.match(/ID_Produto: ([^|]+)/);
+          const testQtyMatch = sale.description.match(/Qtd: ([0-9.]+)(?:\s|$)/);
+          console.log('🔥 [DELETE SALE] Teste manual de extração:', {
+            idMatch: testIdMatch,
+            qtyMatch: testQtyMatch,
+            extractedId: testIdMatch ? testIdMatch[1].trim() : null,
+            extractedQty: testQtyMatch ? parseFloat(testQtyMatch[1]) : null
+          });
+
+          // Check if it's a resale product, raw material, or final product
+          isRawMaterial = sale.description.includes("TIPO_PRODUTO: materia_prima");
+          isResaleProduct = sale.description.includes("TIPO_PRODUTO: revenda");
+          isFinalProduct = sale.description.includes("TIPO_PRODUTO: final");
+          
+          console.log('🔥 [DELETE SALE] Tipo de produto:', { isRawMaterial, isResaleProduct, isFinalProduct });
 
           if (productInfo) {
             console.log('🔥 [DELETE SALE] Produto ID para buscar:', productInfo.productId);
@@ -1525,7 +1658,98 @@ const SalesDashboard = ({
             
             // FIRST: Try to restore stock before deleting the transaction
             try {
-              if (isResaleProduct) {
+              if (isRawMaterial) {
+                console.log('🔥 [DELETE SALE] Processando matéria-prima...');
+                console.log('🔥 [DELETE SALE] Todos os itens de estoque disponíveis:', stockItems.map(item => ({
+                  id: item.id,
+                  name: item.item_name,
+                  type: item.item_type,
+                  quantity: item.quantity
+                })));
+                
+                // Handle raw material stock restoration in stock_items table
+                const stockItem = stockItems.find(
+                  (item) => {
+                    const matches = item.id === productInfo.productId && item.item_type === "material";
+                    console.log('🔥 [DELETE SALE] Comparando item matéria-prima:', { 
+                      itemId: item.id, 
+                      itemName: item.item_name,
+                      itemType: item.item_type,
+                      searchingFor: productInfo.productId,
+                      matches: matches
+                    });
+                    return matches;
+                  }
+                );
+
+                console.log('🔥 [DELETE SALE] Item de estoque encontrado (matéria-prima):', stockItem);
+                console.log('🔥 [DELETE SALE] Product Info completo:', productInfo);
+
+                if (stockItem) {
+                  // Return quantity to stock_items
+                  const newQuantity = stockItem.quantity + productInfo.quantity;
+                  const newTotalValue = newQuantity * stockItem.unit_cost;
+
+                  console.log('🔥 [DELETE SALE] ========================================');
+                  console.log('🔥 [DELETE SALE] INICIANDO ATUALIZAÇÃO DE ESTOQUE MATÉRIA-PRIMA');
+                  console.log('🔥 [DELETE SALE] ========================================');
+                  console.log('🔥 [DELETE SALE] Dados da atualização:', {
+                    stockItemId: stockItem.id,
+                    stockItemName: stockItem.item_name,
+                    previousQuantity: stockItem.quantity,
+                    returnedQuantity: productInfo.quantity,
+                    newQuantity: newQuantity,
+                    unitCost: stockItem.unit_cost,
+                    newTotalValue: newTotalValue,
+                  });
+
+                  try {
+                    await updateStockItem(stockItem.id, {
+                      quantity: newQuantity,
+                      total_value: newTotalValue,
+                      last_updated: new Date().toISOString(),
+                    });
+
+                    console.log('✅✅✅ [DELETE SALE] ESTOQUE DE MATÉRIA-PRIMA RESTAURADO COM SUCESSO! ✅✅✅');
+                    console.log('🔥 [DELETE SALE] Nova quantidade no estoque:', newQuantity);
+                    stockRestored = true;
+                  } catch (updateError) {
+                    console.error('❌❌❌ [DELETE SALE] ERRO AO ATUALIZAR ESTOQUE:', updateError);
+                    throw updateError;
+                  }
+                  
+                  // Dispatch stock update event for real-time sync
+                  window.dispatchEvent(new CustomEvent('stockItemsUpdated', {
+                    detail: { 
+                      productId: productInfo.productId,
+                      productName: stockItem.item_name,
+                      operation: 'restore',
+                      itemType: 'material',
+                      newQuantity: newQuantity,
+                      timestamp: new Date().toISOString()
+                    }
+                  }));
+                  console.log('📡 [DELETE SALE] Evento de sincronização disparado para matéria-prima');
+                } else {
+                  console.error('❌❌❌ [DELETE SALE] ITEM DE ESTOQUE NÃO ENCONTRADO PARA MATÉRIA-PRIMA! ❌❌❌');
+                  console.error('🔥 [DELETE SALE] ID procurado:', productInfo.productId);
+                  console.error('🔥 [DELETE SALE] Tipo procurado: material');
+                  console.log('🔥 [DELETE SALE] Matérias-primas disponíveis no estoque:', stockItems.filter(item => item.item_type === 'material').map(item => ({
+                    id: item.id,
+                    name: item.item_name,
+                    type: item.item_type,
+                    quantity: item.quantity
+                  })));
+                  console.log('🔥 [DELETE SALE] TODOS os itens no estoque (qualquer tipo):', stockItems.map(item => ({
+                    id: item.id,
+                    name: item.item_name,
+                    type: item.item_type,
+                    quantity: item.quantity
+                  })));
+                  
+                  alert(`❌ ERRO: Não foi possível encontrar a matéria-prima no estoque!\n\nID procurado: ${productInfo.productId}\n\nVerifique o console para mais detalhes.`);
+                }
+              } else if (isResaleProduct) {
                 console.log('🔥 [DELETE SALE] Processando produto de revenda...');
                 // Handle resale product stock restoration in stock_items table
                 const stockItem = stockItems.find(
@@ -1562,6 +1786,18 @@ const SalesDashboard = ({
 
                   console.log('✅ [DELETE SALE] Estoque de produto de revenda restaurado com sucesso!');
                   stockRestored = true;
+                  
+                  // Dispatch stock update event for real-time sync
+                  window.dispatchEvent(new CustomEvent('resaleStockUpdated', {
+                    detail: { 
+                      productId: productInfo.productId,
+                      productName: stockItem.item_name,
+                      operation: 'restore',
+                      newQuantity: newQuantity,
+                      timestamp: new Date().toISOString()
+                    }
+                  }));
+                  console.log('📡 [DELETE SALE] Evento de sincronização disparado para produto de revenda');
                 } else {
                   console.error('❌ [DELETE SALE] Item de estoque não encontrado para produto de revenda:', productInfo.productId);
                   console.log('🔥 [DELETE SALE] Itens disponíveis no estoque:', stockItems.map(item => ({
@@ -1646,10 +1882,19 @@ const SalesDashboard = ({
           return;
         }
 
-        alert(
-          `Venda excluída com sucesso!\n\n` +
-            `📦 Os produtos foram devolvidos ao estoque automaticamente.`,
-        );
+        // Determine message based on product type
+        let successMessage = `Venda excluída com sucesso!\n\n`;
+        if (isRawMaterial) {
+          successMessage += `📦 A matéria-prima foi devolvida ao estoque automaticamente.`;
+        } else if (isResaleProduct) {
+          successMessage += `📦 O produto de revenda foi devolvido ao estoque automaticamente.`;
+        } else if (isFinalProduct) {
+          successMessage += `📦 O produto final foi devolvido ao estoque automaticamente.`;
+        } else {
+          successMessage += `📦 Os produtos foram devolvidos ao estoque automaticamente.`;
+        }
+        
+        alert(successMessage);
         
         // Refresh data to update UI
         onRefresh();
@@ -1995,7 +2240,6 @@ const SalesDashboard = ({
     };
   }, [resaleProductSalesHistory]);
 
-  // Custom tooltip for the chart
   // Filter functions for autocomplete
   const filteredSalespeople = activeSalespeople.filter((person) =>
     person.name.toLowerCase().includes(salespersonSearch.toLowerCase()),
@@ -2008,10 +2252,20 @@ const SalesDashboard = ({
         customer.document.toLowerCase().includes(customerSearch.toLowerCase())),
   );
 
+  // Get available raw materials from stock
+  const availableRawMaterials = stockItems.filter((item) => {
+    return item.item_type === "material" && item.quantity > 0;
+  });
+
   const filteredPOSProducts = (() => {
     if (productType === "final" || productType === "warranty") {
       return availableProducts.filter((product) =>
         product.item_name.toLowerCase().includes(productSearch.toLowerCase()),
+      );
+    } else if (productType === "resale" && isRawMaterialMode) {
+      // Filter raw materials when in raw material mode
+      return availableRawMaterials.filter((material) =>
+        material.item_name.toLowerCase().includes(productSearch.toLowerCase()),
       );
     } else {
       return availableResaleProducts.filter((product) =>
@@ -2079,15 +2333,18 @@ const SalesDashboard = ({
     // Se o modo multi-produto estiver ativo e não for garantia, adicionar automaticamente à lista de produtos selecionados
     if (isMultiProductMode && productType !== "warranty") {
       // Criar um item básico para a lista de produtos selecionados
-      const productName = productType === "final" ? product.item_name : product.name;
+      const productName = productType === "final" ? product.item_name : 
+                          (productType === "resale" && isRawMaterialMode) ? product.item_name : 
+                          product.name;
       
       // Verificar se o produto já está na lista
       const existingProduct = productCart.find(item => item.originalProductId === product.id);
       if (!existingProduct) {
+        const itemType = (productType === "resale" && isRawMaterialMode) ? 'material' : productType;
         const newSelectedProduct = {
           id: Date.now().toString(),
           name: productName,
-          type: productType as 'final' | 'resale',
+          type: itemType as 'final' | 'resale' | 'material',
           quantity: 0, // Será preenchido quando o usuário digitar
           unitPrice: 0, // Será preenchido quando o usuário digitar
           totalPrice: 0,
@@ -2595,7 +2852,7 @@ const SalesDashboard = ({
                       onClick={() => setProductType("resale")}
                       className={`p-3 rounded-lg border transition-all ${
                         productType === "resale"
-                          ? "bg-neon-cyan/20 border-neon-cyan text-neon-cyan"
+                          ? "bg-neon-blue/20 border-neon-blue text-neon-blue"
                           : "bg-factory-700/30 border-tire-600/30 text-tire-300 hover:bg-factory-600/30"
                       }`}
                     >
@@ -2643,6 +2900,29 @@ const SalesDashboard = ({
                         • Contador de garantias do cliente será atualizado
                       </p>
                     </div>
+                  )}
+                </div>
+              )}
+
+              {/* Toggle between selling products and raw materials - Only for resale */}
+              {selectedCustomer && productType === "resale" && (
+                <div className="p-3 bg-factory-700/30 rounded-lg border border-tire-600/30">
+                  <Button
+                    type="button"
+                    onClick={() => setIsRawMaterialMode(!isRawMaterialMode)}
+                    className={`w-full h-12 text-base font-medium transition-all ${
+                      isRawMaterialMode
+                        ? "bg-gradient-to-r from-neon-orange to-orange-600 hover:from-orange-600 hover:to-neon-orange border-2 border-neon-orange text-white"
+                        : "bg-factory-700 hover:bg-factory-600 border-2 border-tire-600/50 text-tire-300 hover:text-white"
+                    }`}
+                  >
+                    <Boxes className="h-5 w-5 mr-2" />
+                    {isRawMaterialMode ? "Vender Produtos" : "Vender Matéria Prima"}
+                  </Button>
+                  {isRawMaterialMode && (
+                    <p className="text-neon-orange text-xs mt-2 text-center">
+                      ✓ Selecionando matérias-primas do estoque
+                    </p>
                   )}
                 </div>
               )}
@@ -2756,7 +3036,29 @@ const SalesDashboard = ({
                             </div>
                           </div>
                         );
+                      } else if (productType === "resale" && isRawMaterialMode) {
+                        // Raw material - product already is the stockItem
+                        return (
+                          <div
+                            key={product.id}
+                            onClick={() => handleProductSelect(product)}
+                            className={`p-3 cursor-pointer text-white border-b border-tire-600/20 last:border-b-0 ${
+                              isSelected 
+                                ? 'bg-neon-blue/20 border-neon-blue/50' 
+                                : 'hover:bg-tire-700/50'
+                            }`}
+                          >
+                            <div className="font-medium">
+                              <Boxes className="h-4 w-4 inline mr-1" />
+                              {product.item_name}
+                            </div>
+                            <div className="text-sm text-tire-400">
+                              Estoque: {product.quantity.toFixed(2)} {product.unit}
+                            </div>
+                          </div>
+                        );
                       } else {
+                        // Resale product
                         const stockItem = stockItems.find(
                           (item) =>
                             item.item_id === product.id &&
@@ -3383,6 +3685,13 @@ const SalesDashboard = ({
                       histórico de perdas
                     </p>
                   </>
+                ) : isRawMaterialMode ? (
+                  <>
+                    <p>🧱 Modo Matéria-Prima Ativo</p>
+                    <p className="mt-1">
+                      Você está vendendo matéria-prima - use o sistema multi-produto
+                    </p>
+                  </>
                 ) : (
                   <>
                     <p>
@@ -3832,7 +4141,8 @@ const SalesDashboard = ({
                                     
                                     {/* Nome do Produto e Valor Unitário */}
                                     <div className="flex items-center gap-3 flex-1">
-                                      <div className="text-white font-medium">
+                                      <div className="text-white font-medium flex items-center gap-2">
+                                        {productDetails.includes('TIPO_PRODUTO: materia_prima') && <Boxes className="h-4 w-4 text-neon-orange inline" />}
                                         {productName || measures || "Produto"}
                                       </div>
                                       <div className="text-tire-400 text-xs">
@@ -4389,7 +4699,8 @@ const SalesDashboard = ({
                                     
                                     {/* Nome do Produto e Valor Unitário */}
                                     <div className="flex items-center gap-3 flex-1">
-                                      <div className="text-white font-medium">
+                                      <div className="text-white font-medium flex items-center gap-2">
+                                        {(productDetails.includes('TIPO_PRODUTO: materia_prima') || productDetails.includes('TIPO_PRODUTO: revenda')) && <Boxes className="h-4 w-4 text-neon-orange inline" />}
                                         {productName || "Produto de Revenda"}
                                       </div>
                                       <div className="text-tire-300 text-sm font-medium">

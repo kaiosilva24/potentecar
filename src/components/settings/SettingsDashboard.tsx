@@ -28,10 +28,12 @@ import {
   Shield,
   UserPlus,
   Users,
+  GitBranch,
 } from "lucide-react";
 import { dataManager } from "../../utils/dataManager";
 import { useAuth } from "../../../supabase/auth";
 import { useToast } from "@/components/ui/use-toast";
+import ChangeHistoryTab from "./ChangeHistoryTab";
 
 interface SettingsDashboardProps {
   onRefresh?: () => void;
@@ -640,11 +642,11 @@ const SettingsDashboard = ({
             Gerenciar Usuários
           </TabsTrigger>
           <TabsTrigger 
-            value="history" 
+            value="changes" 
             className="text-tire-300 data-[state=active]:text-white data-[state=active]:bg-neon-blue/20"
           >
-            <History className="h-4 w-4 mr-2" />
-            Histórico Lucro Presumido
+            <GitBranch className="h-4 w-4 mr-2" />
+            Histórico de Alterações
           </TabsTrigger>
           <TabsTrigger 
             value="business" 
@@ -687,12 +689,12 @@ const SettingsDashboard = ({
                         Baixe um backup completo de todos os dados do sistema:
                       </p>
                       <ul className="text-tire-400 text-xs space-y-1 ml-4">
-                        <li>• Clientes e fornecedores</li>
-                        <li>• Produtos e matérias-primas</li>
-                        <li>• Transações e vendas</li>
-                        <li>• Estoque e inventário</li>
-                        <li>• Configurações do sistema</li>
-                        <li>• Histórico de lucro presumido</li>
+                        <li>• <strong>Dados principais:</strong> Clientes, fornecedores, produtos, matérias-primas</li>
+                        <li>• <strong>Transações:</strong> Vendas, fluxo de caixa, despesas, dívidas</li>
+                        <li>• <strong>Estoque:</strong> Inventário, produtos de revenda, níveis de estoque</li>
+                        <li>• <strong>Produção:</strong> Receitas, entradas de produção, produção diária</li>
+                        <li>• <strong>Financeiro:</strong> Histórico de custos, simulações, garantias</li>
+                        <li>• <strong>Sistema:</strong> Configurações, unidades customizadas, histórico de alterações</li>
                       </ul>
                     </div>
                     
@@ -926,129 +928,24 @@ const SettingsDashboard = ({
           </Card>
         </TabsContent>
 
-        {/* Tab de Histórico Lucro Presumido */}
-        <TabsContent value="history">
+        {/* Tab de Histórico de Alterações */}
+        <TabsContent value="changes">
           <Card className="bg-factory-800/50 border-tire-600/30 shadow-lg hover:shadow-xl transition-all duration-200">
             <CardHeader>
               <CardTitle className="text-tire-200 flex items-center">
-                <History className="h-5 w-5 mr-2 text-neon-green" />
-                Histórico Lucro Presumido
-                <SaveStatus status={saveStatus.history} />
+                <GitBranch className="h-5 w-5 mr-2 text-neon-purple" />
+                Histórico de Alterações do Sistema
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="mb-4">
                 <p className="text-tire-300 text-sm">
-                  Aqui você pode visualizar o histórico de baselines do lucro empresarial e restaurar estados anteriores caso necessário.
+                  Visualize e gerencie todas as alterações realizadas no sistema. 
+                  Você pode desfazer ou refazer operações para voltar a estados anteriores.
                 </p>
               </div>
 
-              {/* Botão para recarregar histórico */}
-              <div className="flex justify-between items-center mb-4">
-                <Button
-                  onClick={loadBaselineHistory}
-                  disabled={isLoadingHistory}
-                  variant="outline"
-                  className="border-tire-600/30 text-black hover:bg-factory-700/50 hover:text-black transition-all duration-200"
-                >
-                  {isLoadingHistory ? (
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                  )}
-                  Recarregar Histórico
-                </Button>
-              </div>
-
-              {/* Lista do histórico */}
-              <div className="space-y-4">
-                {isLoadingHistory ? (
-                  <div className="flex items-center justify-center py-8">
-                    <RefreshCw className="h-6 w-6 animate-spin text-neon-blue mr-2" />
-                    <span className="text-tire-300">Carregando histórico...</span>
-                  </div>
-                ) : baselineHistory.length === 0 ? (
-                  <div className="text-center py-8">
-                    <Clock className="h-12 w-12 text-tire-400 mx-auto mb-4" />
-                    <p className="text-tire-300">Nenhum histórico encontrado</p>
-                    <p className="text-tire-400 text-sm">
-                      O histórico será criado automaticamente quando você confirmar, desativar ou redefinir baselines.
-                    </p>
-                  </div>
-                ) : (
-                  baselineHistory.map((entry, index) => (
-                    <Card key={entry.key} className="bg-factory-700/50 border-tire-600/30 hover:bg-factory-700/70 transition-all duration-200">
-                      <CardContent className="p-4">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Badge 
-                                variant={entry.action === 'confirm' ? 'default' : entry.action === 'deactivate' ? 'destructive' : 'secondary'}
-                                className="text-xs"
-                              >
-                                {entry.action === 'confirm' ? 'Confirmado' : 
-                                 entry.action === 'deactivate' ? 'Desativado' : 
-                                 'Redefinido'}
-                              </Badge>
-                              <span className="text-tire-400 text-xs">
-                                {new Date(entry.timestamp || entry.created_at).toLocaleString('pt-BR')}
-                              </span>
-                            </div>
-                            
-                            <p className="text-tire-200 text-sm mb-2">{entry.description}</p>
-                            
-                            <div className="grid grid-cols-3 gap-4 text-xs">
-                              <div>
-                                <span className="text-tire-400">Baseline:</span>
-                                <p className="text-neon-blue font-medium">
-                                  {new Intl.NumberFormat('pt-BR', {
-                                    style: 'currency',
-                                    currency: 'BRL'
-                                  }).format(entry.baseline_value)}
-                                </p>
-                              </div>
-                              <div>
-                                <span className="text-tire-400">Valor Empresarial:</span>
-                                <p className="text-tire-200 font-medium">
-                                  {new Intl.NumberFormat('pt-BR', {
-                                    style: 'currency',
-                                    currency: 'BRL'
-                                  }).format(entry.business_value)}
-                                </p>
-                              </div>
-                              <div>
-                                <span className="text-tire-400">Lucro:</span>
-                                <p className={`font-medium ${entry.profit_value >= 0 ? 'text-neon-green' : 'text-red-400'}`}>
-                                  {new Intl.NumberFormat('pt-BR', {
-                                    style: 'currency',
-                                    currency: 'BRL'
-                                  }).format(entry.profit_value)}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                          
-                          <div className="ml-4">
-                            <Button
-                              onClick={() => handleRestoreBaseline(entry.key)}
-                              disabled={isRestoringBaseline}
-                              size="sm"
-                              variant="outline"
-                              className="border-neon-blue/30 text-black hover:bg-neon-blue/10 hover:text-black"
-                            >
-                              {isRestoringBaseline ? (
-                                <RefreshCw className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <Undo2 className="h-3 w-3" />
-                              )}
-                            </Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))
-                )}
-              </div>
+              <ChangeHistoryTab onRefresh={onRefresh} />
             </CardContent>
           </Card>
         </TabsContent>

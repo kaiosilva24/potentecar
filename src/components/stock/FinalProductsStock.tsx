@@ -22,6 +22,7 @@ import { Package, Calculator, Save, Edit3, Search, Settings, AlertTriangle } fro
 import { useStockItems, useProducts } from "@/hooks/useDataPersistence";
 import { useToast } from "@/components/ui/use-toast";
 import { dataManager } from "@/utils/dataManager";
+import { StockBaselineManager } from "@/utils/stockBaselineManager";
 
 interface FinalProductsStockProps {
   isLoading?: boolean;
@@ -91,7 +92,7 @@ const FinalProductsStock: React.FC<FinalProductsStockProps> = ({ isLoading = fal
   // Função para obter custo específico do TireCostManager com sincronização em tempo real
   const getSpecificCost = (productName: string): number => {
     try {
-      console.log(`🔍 [FinalProductsStock] Buscando custo para produto: "${productName}"`);
+      // Log removido para melhorar performance
       
       // PRIORIDADE 1: Buscar dados específicos salvos pelo TireCostManager
       const productKey = `tireAnalysis_${productName.toLowerCase().replace(/\s+/g, "_")}`;
@@ -101,12 +102,7 @@ const FinalProductsStock: React.FC<FinalProductsStockProps> = ({ isLoading = fal
         try {
           const analysis = JSON.parse(savedAnalysis);
           if (analysis.costPerTire && analysis.costPerTire > 0) {
-            console.log(`✅ [FinalProductsStock] Custo específico encontrado para "${productName}": R$ ${analysis.costPerTire.toFixed(2)}`);
-            console.log(`📊 [FinalProductsStock] Dados da análise:`, {
-              hasRecipe: analysis.hasRecipe,
-              lastUpdated: analysis.lastUpdated,
-              source: analysis.source
-            });
+            // Logs removidos para melhorar performance
             return analysis.costPerTire;
           }
         } catch (parseError) {
@@ -540,13 +536,44 @@ const FinalProductsStock: React.FC<FinalProductsStockProps> = ({ isLoading = fal
     try {
       const stockItem = stockItems.find(item => item.item_id === productId);
       if (stockItem) {
-        // Calcular novo valor total baseado na quantidade editável
-        const newTotalValue = product.editableQuantity * product.costPerTire;
+        // Calcular valores antigo e novo
+        const oldQuantity = stockItem.quantity;
+        const newQuantity = product.editableQuantity;
+        const oldTotalValue = oldQuantity * product.costPerTire;
+        const newTotalValue = newQuantity * product.costPerTire;
+        const valueDifference = newTotalValue - oldTotalValue;
+        
+        console.log(`📊 [FinalProductsStock] Calculando diferença de valor:`, {
+          productName: product.productName,
+          oldQuantity,
+          newQuantity,
+          costPerTire: product.costPerTire,
+          oldTotalValue,
+          newTotalValue,
+          valueDifference
+        });
         
         await updateStockItem(stockItem.id, {
           quantity: product.editableQuantity,
           total_value: newTotalValue
         });
+        
+        // AJUSTAR BASELINE DO LUCRO EMPRESARIAL COM A DIFERENÇA
+        if (valueDifference > 0) {
+          // Aumentou o valor (adicionou quantidade)
+          await StockBaselineManager.adjustBaselineOnAdd(
+            Math.abs(newQuantity - oldQuantity),
+            product.costPerTire,
+            product.productName
+          );
+        } else if (valueDifference < 0) {
+          // Diminuiu o valor (removeu quantidade)
+          await StockBaselineManager.adjustBaselineOnRemove(
+            Math.abs(newQuantity - oldQuantity),
+            product.costPerTire,
+            product.productName
+          );
+        }
 
         // Atualizar estado local
         setProductAnalysis(prev => 

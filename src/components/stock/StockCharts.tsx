@@ -49,26 +49,29 @@ import {
   StockItem,
 } from "@/types/financial";
 import { dataManager } from "@/utils/dataManager";
+import { initializeDefaultTireCosts, ensureTireCostExists } from "@/utils/defaultTireCosts";
 
 // Função para obter custo específico do TireCostManager (igual ao FinalProductsStock)
 const getSpecificCost = (productName: string): number => {
   try {
-    // Buscar dados específicos salvos pelo TireCostManager
+    // Primeiro, tentar buscar dados existentes
     const productKey = `tireAnalysis_${productName.toLowerCase().replace(/\s+/g, "_")}`;
     const savedAnalysis = localStorage.getItem(productKey);
 
-    console.log(`🔍 [StockCharts] Buscando custo para ${productName}:`, {
-      productKey,
-      hasData: !!savedAnalysis,
-      data: savedAnalysis ? JSON.parse(savedAnalysis) : null
-    });
+    // Log removido para performance
 
     if (savedAnalysis) {
       const analysis = JSON.parse(savedAnalysis);
       if (analysis.costPerTire && analysis.costPerTire > 0) {
-        console.log(`✅ [StockCharts] Custo encontrado para ${productName}: R$ ${analysis.costPerTire}`);
         return analysis.costPerTire;
       }
+    }
+
+    // Se não encontrou, usar função síncrona para garantir inicialização
+    const cost = ensureTireCostExists(productName);
+    
+    if (cost > 0) {
+      return cost;
     }
 
     // Fallback para custo médio sincronizado
@@ -76,15 +79,14 @@ const getSpecificCost = (productName: string): number => {
     if (synchronizedData) {
       const data = JSON.parse(synchronizedData);
       if (data.value && data.value > 0) {
-        console.log(`🔄 [StockCharts] Usando custo médio para ${productName}: R$ ${data.value}`);
         return data.value;
       }
     }
 
-    console.warn(`⚠️ [StockCharts] Nenhum custo encontrado para ${productName}`);
+    console.warn(`⚠️ [StockCharts] Nenhum custo encontrado para "${productName}" mesmo após inicialização`);
     return 0;
   } catch (error) {
-    console.error('Erro ao obter custo específico:', error);
+    console.error(`❌ [StockCharts] Erro ao obter custo específico para "${productName}":`, error);
     return 0;
   }
 };
@@ -102,18 +104,7 @@ const CustomTooltip: React.FC<CustomTooltipProps> = ({ active, payload, label })
     
     if (!data) return null;
     
-    console.log('📊 [CustomTooltip] Dados recebidos:', {
-      fullName: data.fullName,
-      name: data.name,
-      quantity: data.quantity,
-      totalValue: data.totalValue,
-      unitCost: data.unitCost,
-      unit: data.unit,
-      type: data.type,
-      status: data.status,
-      minLevel: data.minLevel,
-      allData: data
-    });
+    // Log removido para performance
     
     // Formatar valor monetário
     const formatCurrency = (value: number) => {
@@ -257,6 +248,36 @@ const StockCharts = ({
   productType = "all",
   isLoading = false,
 }: StockChartsProps) => {
+  
+  // Inicializar custos padrão de pneus na primeira renderização
+  useEffect(() => {
+    console.log("🔧 [StockCharts] Verificando necessidade de inicializar custos padrão...");
+    
+    // Forçar inicialização imediata
+    initializeDefaultTireCosts();
+    
+    // Verificar se o tamanho específico foi inicializado
+    const problematicSize = "165 70 13";
+    const productKey = `tireAnalysis_${problematicSize.toLowerCase().replace(/\s+/g, "_")}`;
+    const existingData = localStorage.getItem(productKey);
+    
+    console.log(`🔍 [StockCharts] Verificando inicialização para "${problematicSize}":`, {
+      productKey,
+      hasData: !!existingData,
+      data: existingData ? JSON.parse(existingData) : null
+    });
+    
+    if (!existingData) {
+      console.error(`❌ [StockCharts] ERRO: Tamanho "${problematicSize}" não foi inicializado!`);
+      // Tentar inicializar novamente após um pequeno delay
+      setTimeout(() => {
+        console.log("🔄 [StockCharts] Tentando inicializar novamente...");
+        initializeDefaultTireCosts();
+      }, 100);
+    } else {
+      console.log(`✅ [StockCharts] Tamanho "${problematicSize}" inicializado corretamente`);
+    }
+  }, []); // Executar apenas uma vez na montagem do componente
   
   // Log detalhado dos dados recebidos do Supabase
   console.log('🔍 [StockCharts] === DADOS RECEBIDOS DO SUPABASE ===');
@@ -1293,13 +1314,13 @@ const StockCharts = ({
                               paddingTop: '10px',
                               fontSize: '12px'
                             }}
-                            formatter={(value, entry) => (
+                            formatter={(value, entry: any) => (
                               <span style={{ 
                                 color: entry.color, 
                                 fontWeight: '500',
                                 textShadow: `0 0 10px ${entry.color}40`
                               }}>
-                                {value} ({entry.payload.unit})
+                                {value} {entry.payload?.unit || ''}
                               </span>
                             )}
                           />
@@ -1518,4 +1539,14 @@ const StockCharts = ({
   );
 };
 
-export default StockCharts;
+// Memoizar componente para evitar re-renders desnecessários
+export default React.memo(StockCharts, (prevProps, nextProps) => {
+  // Comparação customizada para otimizar performance
+  return (
+    prevProps.stockItems.length === nextProps.stockItems.length &&
+    prevProps.products.length === nextProps.products.length &&
+    prevProps.materials.length === nextProps.materials.length &&
+    prevProps.resaleProducts.length === nextProps.resaleProducts.length &&
+    prevProps.isLoading === nextProps.isLoading
+  );
+});

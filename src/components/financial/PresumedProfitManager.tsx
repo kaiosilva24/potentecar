@@ -56,6 +56,25 @@ import type {
 import { useCostCalculationOptions } from "@/hooks/useDataPersistence";
 import { dataManager } from "@/utils/dataManager";
 
+// 🔧 DEBUG FLAGS - Desabilitar logs para máxima performance
+// Mude para true apenas quando precisar debugar categorias específicas
+const DEBUG_LOGS = {
+  COST_OPTIONS: false,        // Mudanças nas opções de custo do TireCostManager
+  RECIPE_SEARCH: false,        // Busca e processamento de receitas
+  PRODUCTION_LOSSES: false,    // Cálculo de perdas de produção e matéria-prima
+  DEFECTIVE_SALES: false,      // Vendas de pneus defeituosos
+  WARRANTY_CALC: false,        // Cálculo de valores de garantia
+  COST_BREAKDOWN: false,       // Breakdown detalhado dos custos
+  SALE_PROCESSING: false,      // Processamento individual de vendas
+  FILTERS_STATS: false,        // Filtros e estatísticas
+  ALL: false                   // Master switch - ativa TODOS os logs
+};
+
+// Função helper para verificar se deve logar
+const shouldLog = (category: keyof typeof DEBUG_LOGS): boolean => {
+  return DEBUG_LOGS.ALL || DEBUG_LOGS[category];
+};
+
 interface PresumedProfitManagerProps {
   isLoading?: boolean;
   cashFlowEntries?: CashFlowEntry[];
@@ -124,18 +143,20 @@ const PresumedProfitManager = ({
 
   // Efeito para detectar mudanças nas opções de custo e forçar recálculo
   useEffect(() => {
-    console.log(
-      "🔄 [PresumedProfitManager] Opções de custo do TireCostManager alteradas:",
-      {
-        isIncludingLaborCosts,
-        isIncludingCashFlowExpenses,
-        isIncludingProductionLosses,
-        isIncludingDefectiveTireSales,
-        isIncludingWarrantyValues,
-        isDividingByProduction,
-        timestamp: new Date().toISOString(),
-      },
-    );
+    if (shouldLog('COST_OPTIONS')) {
+      console.log(
+        "🔄 [PresumedProfitManager] Opções de custo do TireCostManager alteradas:",
+        {
+          isIncludingLaborCosts,
+          isIncludingCashFlowExpenses,
+          isIncludingProductionLosses,
+          isIncludingDefectiveTireSales,
+          isIncludingWarrantyValues,
+          isDividingByProduction,
+          timestamp: new Date().toISOString(),
+        },
+      );
+    }
     setLastCostOptionsUpdate(Date.now());
   }, [
     isIncludingLaborCosts,
@@ -148,71 +169,52 @@ const PresumedProfitManager = ({
 
   // Calculate recipe-based cost per tire (same logic as TireCostManager)
   const calculateRecipeCost = (productName: string) => {
-    console.log(
-      `🔍 [PresumedProfitManager] Buscando receita para produto: "${productName}"`,
-    );
-    console.log(
-      `🔍 [PresumedProfitManager] Receitas disponíveis (${recipes.length}):`,
-      recipes.map((r) => ({
-        id: r.id,
-        product_name: r.product_name,
-        archived: r.archived,
-        materials_count: r.materials?.length || 0,
-      })),
-    );
-    console.log(
-      `🔍 [PresumedProfitManager] StockItems disponíveis (${stockItems.length}):`,
-      stockItems
-        .filter((item) => item.item_type === "material")
-        .map((s) => ({
-          id: s.item_id,
-          name: s.item_name,
-          type: s.item_type,
-          unit_cost: s.unit_cost,
-          quantity: s.quantity,
+    if (shouldLog('RECIPE_SEARCH')) {
+      console.log(
+        `🔍 [PresumedProfitManager] Buscando receita para produto: "${productName}"`,
+      );
+      console.log(
+        `🔍 [PresumedProfitManager] Receitas disponíveis (${recipes.length}):`,
+        recipes.map((r) => ({
+          id: r.id,
+          product_name: r.product_name,
+          archived: r.archived,
+          materials_count: r.materials?.length || 0,
         })),
-    );
-
+      );
+      console.log(
+        `🔍 [PresumedProfitManager] StockItems disponíveis (${stockItems.length}):`,
+        stockItems
+          .filter((item) => item.item_type === "material")
+          .map((s) => ({
+            id: s.item_id,
+            name: s.item_name,
+            type: s.item_type,
+            unit_cost: s.unit_cost,
+            quantity: s.quantity,
+          })),
+      );
+    }
     const recipe = recipes.find((r) => {
       const nameMatch =
         r.product_name.toLowerCase().trim() ===
         productName.toLowerCase().trim();
       const notArchived = !r.archived;
-      console.log(
-        `🔍 [PresumedProfitManager] Comparando "${r.product_name}" com "${productName}": nameMatch=${nameMatch}, notArchived=${notArchived}`,
-      );
       return nameMatch && notArchived;
     });
 
-    console.log(
-      `🔍 [PresumedProfitManager] Receita encontrada:`,
-      recipe
-        ? {
-            id: recipe.id,
-            product_name: recipe.product_name,
-            materials_count: recipe.materials?.length || 0,
-          }
-        : "Nenhuma receita encontrada",
-    );
-
-    if (!recipe) {
-      return {
-        recipeCost: 0,
-        hasRecipe: false,
-        recipeDetails: undefined,
-      };
+    if (shouldLog('RECIPE_SEARCH')) {
+      console.log(
+        `🔍 [PresumedProfitManager] Receita encontrada:`,
+        recipe ? {
+          id: recipe.id,
+          product_name: recipe.product_name,
+          materials_count: recipe.materials?.length || 0,
+        } : "Nenhuma receita encontrada",
+      );
     }
 
-    const materialCosts = recipe.materials.map((material) => {
-      console.log(
-        `🔍 [PresumedProfitManager] Processando material da receita:`,
-        {
-          material_id: material.material_id,
-          material_name: material.material_name,
-          quantity_needed: material.quantity_needed,
-        },
-      );
-
+    const materialCosts = recipe?.materials.map((material) => {
       // Find the material in stock to get current price
       const stockMaterial = stockItems.find((item) => {
         const isTypeMaterial = item.item_type === "material";
@@ -220,8 +222,6 @@ const PresumedProfitManager = ({
         const nameMatch =
           item.item_name.toLowerCase().trim() ===
           material.material_name.toLowerCase().trim();
-
-        // Try partial name matching as fallback
         const partialNameMatch =
           item.item_name
             .toLowerCase()
@@ -230,18 +230,6 @@ const PresumedProfitManager = ({
             .toLowerCase()
             .includes(item.item_name.toLowerCase());
 
-        console.log(`🔍 [PresumedProfitManager] Comparando com estoque:`, {
-          stock_item_id: item.item_id,
-          stock_item_name: item.item_name,
-          stock_item_type: item.item_type,
-          material_name: material.material_name,
-          isTypeMaterial,
-          idMatch,
-          nameMatch,
-          partialNameMatch,
-          matches: isTypeMaterial && (idMatch || nameMatch || partialNameMatch),
-        });
-
         return isTypeMaterial && (idMatch || nameMatch || partialNameMatch);
       });
 
@@ -249,22 +237,13 @@ const PresumedProfitManager = ({
       const totalCost = unitCost * material.quantity_needed;
 
       // Log warning if material not found
-      if (!stockMaterial) {
+      if (!stockMaterial && shouldLog('RECIPE_SEARCH')) {
         console.warn(
           `⚠️ [PresumedProfitManager] Material "${material.material_name}" (ID: ${material.material_id}) não encontrado no estoque. Usando custo zero.`,
         );
       }
 
-      console.log(`🔍 [PresumedProfitManager] Material processado:`, {
-        materialName: material.material_name,
-        materialId: material.material_id,
-        stockFound: !!stockMaterial,
-        stockItemId: stockMaterial?.item_id,
-        stockItemName: stockMaterial?.item_name,
-        unitCost,
-        quantity: material.quantity_needed,
-        totalCost,
-      });
+      // Log removido para melhorar performance
 
       return {
         materialName: material.material_name,
@@ -281,22 +260,24 @@ const PresumedProfitManager = ({
 
     // Check for missing materials
     const missingMaterials = materialCosts.filter((mat) => mat.totalCost === 0);
-    if (missingMaterials.length > 0) {
+    if (missingMaterials.length > 0 && shouldLog('RECIPE_SEARCH')) {
       console.warn(
         `⚠️ [PresumedProfitManager] Receita para "${productName}" tem ${missingMaterials.length} materiais com custo zero:`,
         missingMaterials.map((mat) => mat.materialName),
       );
     }
 
-    console.log(`✅ [PresumedProfitManager] Custo da receita calculado:`, {
-      productName,
-      totalMaterialCost,
-      materialsCount: materialCosts.length,
-      materialsWithCost: materialCosts.filter((mat) => mat.totalCost > 0)
-        .length,
-      materialsWithoutCost: missingMaterials.length,
-      materials: materialCosts,
-    });
+    if (shouldLog('RECIPE_SEARCH')) {
+      console.log(`✅ [PresumedProfitManager] Custo da receita calculado:`, {
+        productName,
+        totalMaterialCost,
+        materialsCount: materialCosts.length,
+        materialsWithCost: materialCosts.filter((mat) => mat.totalCost > 0)
+          .length,
+        materialsWithoutCost: missingMaterials.length,
+        materials: materialCosts,
+      });
+    }
 
     return {
       recipeCost: totalMaterialCost,
@@ -310,9 +291,11 @@ const PresumedProfitManager = ({
 
   // Calculate production and material losses for a specific product
   const calculateProductionLosses = (productName: string) => {
-    console.log(
-      `🔍 [PresumedProfitManager] Calculando perdas de produção e matéria-prima para: "${productName}"`,
-    );
+    if (shouldLog('PRODUCTION_LOSSES')) {
+      console.log(
+        `🔍 [PresumedProfitManager] Calculando perdas de produção e matéria-prima para: "${productName}"`,
+      );
+    }
 
     const productEntries = productionEntries.filter(
       (entry) =>
@@ -320,10 +303,12 @@ const PresumedProfitManager = ({
         productName.toLowerCase().trim(),
     );
 
-    console.log(
-      `📊 [PresumedProfitManager] Entradas de produção encontradas para ${productName}:`,
-      productEntries.length,
-    );
+    if (shouldLog('PRODUCTION_LOSSES')) {
+      console.log(
+        `📊 [PresumedProfitManager] Entradas de produção encontradas para ${productName}:`,
+        productEntries.length,
+      );
+    }
 
     let totalLossQuantity = 0;
     let totalLossValue = 0;
@@ -335,10 +320,12 @@ const PresumedProfitManager = ({
 
       // Calculate material losses for this entry
       if (entry.material_loss && Array.isArray(entry.material_loss)) {
-        console.log(
-          `🔍 [PresumedProfitManager] Calculando perdas de matéria-prima para entrada ${entry.production_date}:`,
-          entry.material_loss,
-        );
+        if (shouldLog('PRODUCTION_LOSSES')) {
+          console.log(
+            `🔍 [PresumedProfitManager] Calculando perdas de matéria-prima para entrada ${entry.production_date}:`,
+            entry.material_loss,
+          );
+        }
 
         entryMaterialLossValue = entry.material_loss.reduce(
           (total: number, materialLoss: any) => {
@@ -349,15 +336,17 @@ const PresumedProfitManager = ({
               ? stockItem.unit_cost * materialLoss.quantity_lost
               : 0;
 
-            console.log(
-              `📉 [PresumedProfitManager] Perda de material ${materialLoss.material_name}:`,
-              {
-                material_id: materialLoss.material_id,
-                quantity_lost: materialLoss.quantity_lost,
-                unit_cost: stockItem?.unit_cost || 0,
-                loss_value: lossValue,
-              },
-            );
+            if (shouldLog('PRODUCTION_LOSSES')) {
+              console.log(
+                `📉 [PresumedProfitManager] Perda de material ${materialLoss.material_name}:`,
+                {
+                  material_id: materialLoss.material_id,
+                  quantity_lost: materialLoss.quantity_lost,
+                  unit_cost: stockItem?.unit_cost || 0,
+                  loss_value: lossValue,
+                },
+              );
+            }
 
             return total + lossValue;
           },
@@ -365,9 +354,11 @@ const PresumedProfitManager = ({
         );
 
         totalMaterialLossValue += entryMaterialLossValue;
-        console.log(
-          `💸 [PresumedProfitManager] Total de perdas de matéria-prima na entrada ${entry.production_date}: ${entryMaterialLossValue}`,
-        );
+        if (shouldLog('PRODUCTION_LOSSES')) {
+          console.log(
+            `💸 [PresumedProfitManager] Total de perdas de matéria-prima na entrada ${entry.production_date}: ${entryMaterialLossValue}`,
+          );
+        }
       }
 
       // Calculate production losses (existing logic)
@@ -398,15 +389,17 @@ const PresumedProfitManager = ({
 
         totalLossQuantity += lossQuantity;
 
-        console.log(
-          `📉 [PresumedProfitManager] Perda de produção encontrada em ${entry.production_date}:`,
-          {
-            lossQuantity,
-            materialCostForEntry,
-            costPerUnit,
-            productionLossValue: entryProductionLossValue,
-          },
-        );
+        if (shouldLog('PRODUCTION_LOSSES')) {
+          console.log(
+            `📉 [PresumedProfitManager] Perda de produção encontrada em ${entry.production_date}:`,
+            {
+              lossQuantity,
+              materialCostForEntry,
+              costPerUnit,
+              productionLossValue: entryProductionLossValue,
+            },
+          );
+        }
       }
 
       // Combine both types of losses for this entry
@@ -432,52 +425,59 @@ const PresumedProfitManager = ({
       lossPercentage,
     };
 
-    console.log(
-      `✅ [PresumedProfitManager] Perdas totais calculadas para ${productName}:`,
-      {
-        totalProductionLossValue: totalLossValue - totalMaterialLossValue,
-        totalMaterialLossValue,
-        totalCombinedLossValue: totalLossValue,
-        lossPercentage,
-      },
-    );
+    if (shouldLog('PRODUCTION_LOSSES')) {
+      console.log(
+        `✅ [PresumedProfitManager] Perdas totais calculadas para ${productName}:`,
+        {
+          totalProductionLossValue: totalLossValue - totalMaterialLossValue,
+          totalMaterialLossValue,
+          totalCombinedLossValue: totalLossValue,
+          lossPercentage,
+        },
+      );
+    }
 
     return result;
   };
 
   // Calculate total defective tire sales
   const calculateDefectiveTireSalesTotal = () => {
-    console.log(
-      `🔍 [PresumedProfitManager] Calculando total de vendas de pneus defeituosos:`,
-      {
-        totalSales: defectiveTireSales.length,
-        sales: defectiveTireSales.map((sale) => ({
-          id: sale.id,
-          tire_name: sale.tire_name,
-          quantity: sale.quantity,
-          sale_value: sale.sale_value,
-          sale_date: sale.sale_date,
-        })),
-      },
-    );
+    if (shouldLog('DEFECTIVE_SALES')) {
+      console.log(
+        `🔍 [PresumedProfitManager] Calculando total de vendas de pneus defeituosos:`,
+        {
+          totalSales: defectiveTireSales.length,
+          sales: defectiveTireSales.map((sale) => ({
+            id: sale.id,
+            tire_name: sale.tire_name,
+            quantity: sale.quantity,
+            sale_value: sale.sale_value,
+            sale_date: sale.sale_date,
+          })),
+        },
+      );
+    }
 
     const totalValue = defectiveTireSales.reduce(
       (total, sale) => total + sale.sale_value,
       0,
     );
 
-    console.log(
-      `✅ [PresumedProfitManager] Total de vendas de pneus defeituosos calculado: ${totalValue}`,
-    );
+    if (shouldLog('DEFECTIVE_SALES')) {
+      console.log(
+        `✅ [PresumedProfitManager] Total de vendas de pneus defeituosos calculado: ${totalValue}`,
+      );
+    }
 
     return totalValue;
   };
 
   // Calculate warranty value for a specific product
   const calculateWarrantyValue = (productName: string) => {
-    console.log(
-      `🔍 [PresumedProfitManager] Calculando valor de garantia para produto: "${productName}"`,
-    );
+    // DEBUG: Desabilitado para performance - use DEBUG_LOGS.WARRANTY_CALC = true para reativar
+    // console.log(
+    //   `🔍 [PresumedProfitManager] Calculando valor de garantia para produto: "${productName}"`,
+    // );
 
     const productWarranties = warrantyEntries.filter(
       (warranty) =>
@@ -485,10 +485,11 @@ const PresumedProfitManager = ({
         productName.toLowerCase().trim(),
     );
 
-    console.log(
-      `📊 [PresumedProfitManager] Garantias encontradas para ${productName}:`,
-      productWarranties.length,
-    );
+    // DEBUG: Desabilitado para performance
+    // console.log(
+    //   `📊 [PresumedProfitManager] Garantias encontradas para ${productName}:`,
+    //   productWarranties.length,
+    // );
 
     let totalWarrantyQuantity = 0;
     let totalWarrantyValue = 0;
@@ -505,16 +506,18 @@ const PresumedProfitManager = ({
       if (recipe) {
         const recipeData = calculateRecipeCost(warranty.product_name);
         warrantyValue = recipeData.recipeCost * warranty.quantity;
-        console.log(`💰 [PresumedProfitManager] Valor da garantia calculado:`, {
-          product: warranty.product_name,
-          quantity: warranty.quantity,
-          recipeCost: recipeData.recipeCost,
-          totalValue: warrantyValue,
-        });
+        // DEBUG: Desabilitado para performance
+        // console.log(`💰 [PresumedProfitManager] Valor da garantia calculado:`, {
+        //   product: warranty.product_name,
+        //   quantity: warranty.quantity,
+        //   recipeCost: recipeData.recipeCost,
+        //   totalValue: warrantyValue,
+        // });
       } else {
-        console.warn(
-          `⚠️ [PresumedProfitManager] Receita não encontrada para produto da garantia: ${warranty.product_name}`,
-        );
+        // DEBUG: Desabilitado para performance
+        // console.warn(
+        //   `⚠️ [PresumedProfitManager] Receita não encontrada para produto da garantia: ${warranty.product_name}`,
+        // );
       }
 
       totalWarrantyQuantity += warranty.quantity;
@@ -527,44 +530,109 @@ const PresumedProfitManager = ({
       warrantyCount: productWarranties.length,
     };
 
-    console.log(
-      `✅ [PresumedProfitManager] Valor total de garantia calculado para ${productName}:`,
-      {
-        totalQuantity: totalWarrantyQuantity,
-        totalValue: totalWarrantyValue,
-        warrantyCount: productWarranties.length,
-      },
-    );
+    // DEBUG: Desabilitado para performance
+    // console.log(
+    //   `✅ [PresumedProfitManager] Valor total de garantia calculado para ${productName}:`,
+    //   {
+    //     totalQuantity: totalWarrantyQuantity,
+    //     totalValue: totalWarrantyValue,
+    //     warrantyCount: productWarranties.length,
+    //   },
+    // );
 
     return result;
+  };
+
+  // Helper function to get specific cost from TireCostManager (same logic as StockCharts)
+  const getSpecificCostFromTireCostManager = (productName: string): number => {
+    try {
+      // Primeiro, tentar buscar dados existentes do TireCostManager
+      const productKey = `tireAnalysis_${productName.toLowerCase().replace(/\s+/g, "_")}`;
+      const savedAnalysis = localStorage.getItem(productKey);
+
+      if (savedAnalysis) {
+        const analysis = JSON.parse(savedAnalysis);
+        if (analysis.costPerTire && analysis.costPerTire > 0) {
+          console.log(
+            `✅ [PresumedProfitManager] Usando custo do TIRECOSTMANAGER para ${productName}:`,
+            {
+              productName,
+              costPerTire: analysis.costPerTire,
+              source: "TireCostManager (localStorage)"
+            }
+          );
+          return analysis.costPerTire;
+        }
+      }
+
+      // Fallback: Custo médio sincronizado
+      const synchronizedData = localStorage.getItem("dashboard_averageCostPerTire");
+      if (synchronizedData) {
+        const data = JSON.parse(synchronizedData);
+        if (data.value && data.value > 0) {
+          console.log(
+            `⚠️ [PresumedProfitManager] Usando custo médio para ${productName}:`,
+            {
+              productName,
+              averageCost: data.value,
+              source: "Custo médio (fallback)"
+            }
+          );
+          return data.value;
+        }
+      }
+
+      return 0;
+    } catch (error) {
+      console.error(`❌ [PresumedProfitManager] Erro ao obter custo do TireCostManager para "${productName}":`, error);
+      return 0;
+    }
   };
 
   // Calculate complete tire cost using the same logic as TireCostManager
   // SINCRONIZADO com as opções do TireCostManager
   const calculateTireCost = (productName: string): number => {
-    console.log(
-      `🧮 [PresumedProfitManager] Calculando custo completo para ${productName} (SINCRONIZADO)`,
-      {
-        costOptionsFromTireCostManager: {
-          isIncludingLaborCosts,
-          isIncludingCashFlowExpenses,
-          isIncludingProductionLosses,
-          isIncludingDefectiveTireSales,
-          isDividingByProduction,
-        },
-      },
-    );
+    // CORREÇÃO DEFINITIVA: Usar custo do TireCostManager (Custo por Pneu)
+    // Este é o custo correto que é atualizado dinamicamente
+    const tireCostFromManager = getSpecificCostFromTireCostManager(productName);
+    
+    if (tireCostFromManager > 0) {
+      return tireCostFromManager;
+    }
 
-    // Get recipe cost (base material cost)
+    // Fallback 1: Buscar no estoque de produtos finais
+    const productInStock = stockItems.find((item) => {
+      const isProduct = item.item_type === "product";
+      const nameMatch = item.item_name.toLowerCase().trim() === productName.toLowerCase().trim();
+      return isProduct && nameMatch;
+    });
+
+    if (productInStock && productInStock.unit_cost > 0) {
+      console.log(
+        `⚠️ [PresumedProfitManager] TireCostManager não encontrado, usando estoque para ${productName}:`,
+        {
+          productName,
+          unit_cost: productInStock.unit_cost,
+          source: "stock_items (fallback)"
+        }
+      );
+      return productInStock.unit_cost;
+    }
+
+    // Fallback 2: Usar custo da receita (matéria-prima)
+    console.warn(
+      `⚠️ [PresumedProfitManager] Produto ${productName} não encontrado no TireCostManager nem no estoque, usando custo da receita como último fallback`
+    );
+    
     const recipeData = calculateRecipeCost(productName);
     if (!recipeData.hasRecipe) {
       console.warn(
-        `⚠️ [PresumedProfitManager] Produto ${productName} sem receita - usando custo zero`,
+        `⚠️ [PresumedProfitManager] Produto ${productName} sem receita, estoque e TireCostManager - usando custo zero`,
       );
       return 0;
     }
 
-    // Base cost: material cost from recipe
+    // Base cost: material cost from recipe (apenas como último fallback)
     let totalCost = recipeData.recipeCost;
     let laborCostComponent = 0;
     let cashFlowCostComponent = 0;
@@ -607,15 +675,16 @@ const PresumedProfitManager = ({
     // Production quantity for division (use the higher of produced or sold)
     const productionQuantity = Math.max(totalProduced, totalSold, 1);
 
-    console.log(
-      `📊 [PresumedProfitManager] Dados de produção para ${productName}:`,
-      {
-        totalProduced,
-        totalSold,
-        productionQuantity,
-        recipeCost: recipeData.recipeCost,
-      },
-    );
+    // DEBUG: Desabilitado para performance
+    // console.log(
+    //   `📊 [PresumedProfitManager] Dados de produção para ${productName}:`,
+    //   {
+    //     totalProduced,
+    //     totalSold,
+    //     productionQuantity,
+    //     recipeCost: recipeData.recipeCost,
+    //   },
+    // );
 
     // Calculate total costs for optional components
     const totalLaborCosts = employees
@@ -630,25 +699,27 @@ const PresumedProfitManager = ({
     const totalDefectiveTireSales = calculateDefectiveTireSalesTotal();
     const warrantyData = calculateWarrantyValue(productName);
 
-    console.log(`💰 [PresumedProfitManager] Custos totais disponíveis:`, {
-      totalLaborCosts,
-      totalCashFlowExpenses,
-      productionLossValue: productionLossData?.totalLossValue || 0,
-      totalDefectiveTireSales,
-      warrantyValue: warrantyData?.totalWarrantyValue || 0,
-    });
+    // DEBUG: Desabilitado para performance
+    // console.log(`💰 [PresumedProfitManager] Custos totais disponíveis:`, {
+    //   totalLaborCosts,
+    //   totalCashFlowExpenses,
+    //   productionLossValue: productionLossData?.totalLossValue || 0,
+    //   totalDefectiveTireSales,
+    //   warrantyValue: warrantyData?.totalWarrantyValue || 0,
+    // });
 
     // SINCRONIZAÇÃO: Usar as mesmas opções do TireCostManager
-    console.log(
-      `🔗 [PresumedProfitManager] APLICANDO configurações sincronizadas do TireCostManager:`,
-      {
-        isIncludingLaborCosts,
-        isIncludingCashFlowExpenses,
-        isIncludingProductionLosses,
-        isIncludingDefectiveTireSales,
-        isDividingByProduction,
-      },
-    );
+    // DEBUG: Desabilitado para performance
+    // console.log(
+    //   `🔗 [PresumedProfitManager] APLICANDO configurações sincronizadas do TireCostManager:`,
+    //   {
+    //     isIncludingLaborCosts,
+    //     isIncludingCashFlowExpenses,
+    //     isIncludingProductionLosses,
+    //     isIncludingDefectiveTireSales,
+    //     isDividingByProduction,
+    //   },
+    // );
 
     // Add labor costs (SOMENTE se habilitado no TireCostManager)
     // CORREÇÃO: Não dividir TODO o salário dos funcionários pela produção de um produto específico
@@ -656,13 +727,15 @@ const PresumedProfitManager = ({
       // DESABILITADO: laborCostComponent = totalLaborCosts / productionQuantity;
       laborCostComponent = 0; // Temporariamente zerado para corrigir cálculos
       totalCost += laborCostComponent;
-      console.log(
-        `👥 [PresumedProfitManager] Custos de mão de obra TEMPORARIAMENTE ZERADOS para corrigir cálculos absurdos`,
-      );
+      // DEBUG: Desabilitado para performance
+      // console.log(
+      //   `👥 [PresumedProfitManager] Custos de mão de obra TEMPORARIAMENTE ZERADOS para corrigir cálculos absurdos`,
+      // );
     } else if (!isIncludingLaborCosts) {
-      console.log(
-        `👥 [PresumedProfitManager] Custos de mão de obra IGNORADOS (desabilitado no TireCostManager)`,
-      );
+      // DEBUG: Desabilitado para performance
+      // console.log(
+      //   `👥 [PresumedProfitManager] Custos de mão de obra IGNORADOS (desabilitado no TireCostManager)`,
+      // );
     }
 
     // Add cash flow expenses (SOMENTE se habilitado no TireCostManager)
@@ -672,13 +745,15 @@ const PresumedProfitManager = ({
       // DESABILITADO: cashFlowCostComponent = totalCashFlowExpenses / productionQuantity;
       cashFlowCostComponent = 0; // Temporariamente zerado para corrigir cálculos
       totalCost += cashFlowCostComponent;
-      console.log(
-        `💸 [PresumedProfitManager] Saídas de caixa TEMPORARIAMENTE ZERADAS para corrigir cálculos absurdos`,
-      );
+      // DEBUG: Desabilitado para performance
+      // console.log(
+      //   `💸 [PresumedProfitManager] Saídas de caixa TEMPORARIAMENTE ZERADAS para corrigir cálculos absurdos`,
+      // );
     } else if (!isIncludingCashFlowExpenses) {
-      console.log(
-        `💸 [PresumedProfitManager] Saídas de caixa IGNORADAS (desabilitado no TireCostManager)`,
-      );
+      // DEBUG: Desabilitado para performance
+      // console.log(
+      //   `💸 [PresumedProfitManager] Saídas de caixa IGNORADAS (desabilitado no TireCostManager)`,
+      // );
     }
 
     // Add production losses (SOMENTE se habilitado no TireCostManager)
@@ -687,13 +762,15 @@ const PresumedProfitManager = ({
       // DESABILITADO: productionLossCostComponent = productionLossData.totalLossValue / productionQuantity;
       productionLossCostComponent = 0; // Temporariamente zerado para corrigir cálculos
       totalCost += productionLossCostComponent;
-      console.log(
-        `📉 [PresumedProfitManager] Perdas de produção TEMPORARIAMENTE ZERADAS para corrigir cálculos absurdos`,
-      );
+      // DEBUG: Desabilitado para performance
+      // console.log(
+      //   `📉 [PresumedProfitManager] Perdas de produção TEMPORARIAMENTE ZERADAS para corrigir cálculos absurdos`,
+      // );
     } else if (!isIncludingProductionLosses) {
-      console.log(
-        `📉 [PresumedProfitManager] Perdas de produção IGNORADAS (desabilitado no TireCostManager)`,
-      );
+      // DEBUG: Desabilitado para performance
+      // console.log(
+      //   `📉 [PresumedProfitManager] Perdas de produção IGNORADAS (desabilitado no TireCostManager)`,
+      // );
     }
 
     // Subtract defective tire sales (SOMENTE se habilitado no TireCostManager)
@@ -702,13 +779,15 @@ const PresumedProfitManager = ({
       // DESABILITADO: defectiveTireSalesCostComponent = -(totalDefectiveTireSales / productionQuantity);
       defectiveTireSalesCostComponent = 0; // Temporariamente zerado para corrigir cálculos
       totalCost += defectiveTireSalesCostComponent;
-      console.log(
-        `🔧 [PresumedProfitManager] Vendas de pneus defeituosos TEMPORARIAMENTE ZERADAS para corrigir cálculos absurdos`,
-      );
+      // DEBUG: Desabilitado para performance
+      // console.log(
+      //   `🔧 [PresumedProfitManager] Vendas de pneus defeituosos TEMPORARIAMENTE ZERADAS para corrigir cálculos absurdos`,
+      // );
     } else if (!isIncludingDefectiveTireSales) {
-      console.log(
-        `🔧 [PresumedProfitManager] Vendas de pneus defeituosos IGNORADAS (desabilitado no TireCostManager)`,
-      );
+      // DEBUG: Desabilitado para performance
+      // console.log(
+      //   `🔧 [PresumedProfitManager] Vendas de pneus defeituosos IGNORADAS (desabilitado no TireCostManager)`,
+      // );
     }
 
     // Add warranty costs (SOMENTE se habilitado no TireCostManager)
@@ -717,13 +796,15 @@ const PresumedProfitManager = ({
       // DESABILITADO: warrantyCostComponent = warrantyData.totalWarrantyValue / productionQuantity;
       warrantyCostComponent = 0; // Temporariamente zerado para corrigir cálculos
       totalCost += warrantyCostComponent;
-      console.log(
-        `🛡️ [PresumedProfitManager] Valor de garantia TEMPORARIAMENTE ZERADO para corrigir cálculos absurdos`,
-      );
+      // DEBUG: Desabilitado para performance
+      // console.log(
+      //   `🛡️ [PresumedProfitManager] Valor de garantia TEMPORARIAMENTE ZERADO para corrigir cálculos absurdos`,
+      // );
     } else if (!isIncludingWarrantyValues) {
-      console.log(
-        `🛡️ [PresumedProfitManager] Valor de garantia IGNORADO (desabilitado no TireCostManager)`,
-      );
+      // DEBUG: Desabilitado para performance
+      // console.log(
+      //   `🛡️ [PresumedProfitManager] Valor de garantia IGNORADO (desabilitado no TireCostManager)`,
+      // );
     }
 
     const result = {
@@ -736,25 +817,26 @@ const PresumedProfitManager = ({
       warrantyCost: warrantyCostComponent,
     };
 
-    console.log(
-      `🎯 [PresumedProfitManager] Custo final calculado para ${productName}:`,
-      result,
-    );
+    // DEBUG: Desabilitado para performance
+    // console.log(
+    //   `🎯 [PresumedProfitManager] Custo final calculado para ${productName}:`,
+    //   result,
+    // );
 
-    console.log(
-      `🔍 [PresumedProfitManager] BREAKDOWN DETALHADO DO CUSTO UNITÁRIO ${productName}:`,
-      {
-        custoMateriais: recipeData.recipeCost,
-        custoMaoDeObra: laborCostComponent,
-        custoFluxoCaixa: cashFlowCostComponent,
-        custoPerdasProducao: productionLossCostComponent,
-        custoVendasDefeituosos: defectiveTireSalesCostComponent,
-        custoGarantia: warrantyCostComponent,
-        custoTotalFinal: totalCost,
-        quantidadeProducao: productionQuantity,
-        formula: `(${recipeData.recipeCost} + ${laborCostComponent} + ${cashFlowCostComponent} + ${productionLossCostComponent} + ${defectiveTireSalesCostComponent} + ${warrantyCostComponent}) = ${totalCost}`,
-      },
-    );
+    // console.log(
+    //   `🔍 [PresumedProfitManager] BREAKDOWN DETALHADO DO CUSTO UNITÁRIO ${productName}:`,
+    //   {
+    //     custoMateriais: recipeData.recipeCost,
+    //     custoMaoDeObra: laborCostComponent,
+    //     custoFluxoCaixa: cashFlowCostComponent,
+    //     custoPerdasProducao: productionLossCostComponent,
+    //     custoVendasDefeituosos: defectiveTireSalesCostComponent,
+    //     custoGarantia: warrantyCostComponent,
+    //     custoTotalFinal: totalCost,
+    //     quantidadeProducao: productionQuantity,
+    //     formula: `(${recipeData.recipeCost} + ${laborCostComponent} + ${cashFlowCostComponent} + ${productionLossCostComponent} + ${defectiveTireSalesCostComponent} + ${warrantyCostComponent}) = ${totalCost}`,
+    //   },
+    // );
 
     return totalCost;
   };
@@ -767,13 +849,14 @@ const PresumedProfitManager = ({
       productName.trim() === "" ||
       productName === "Produto Não Identificado"
     ) {
-      console.log(
-        `🚫 [PresumedProfitManager] REJEITADO - Nome de produto inválido: "${productName}"`,
-        {
-          productName,
-          reason: "Nome vazio, nulo ou não identificado",
-        },
-      );
+      // DEBUG: Desabilitado para performance
+      // console.log(
+      //   `🚫 [PresumedProfitManager] REJEITADO - Nome de produto inválido: "${productName}"`,
+      //   {
+      //     productName,
+      //     reason: "Nome vazio, nulo ou não identificado",
+      //   },
+      // );
       return false;
     }
 
@@ -785,50 +868,30 @@ const PresumedProfitManager = ({
       const notArchived = !r.archived;
       const hasValidMaterials = r.materials && r.materials.length > 0;
 
-      console.log(
-        `🔍 [PresumedProfitManager] Comparando receita "${r.product_name}" com produto "${productName}":`,
-        {
-          nameMatch,
-          notArchived,
-          hasValidMaterials,
-          materialsCount: r.materials?.length || 0,
-        },
-      );
+      // Log removido para melhorar performance
 
       return nameMatch && notArchived && hasValidMaterials;
     });
 
     const hasRecipe = !!recipe;
-    console.log(
-      `🔍 [PresumedProfitManager] VERIFICAÇÃO RIGOROSA para "${productName}": ${hasRecipe ? "✅ APROVADO" : "❌ REJEITADO"}`,
-      {
-        productName,
-        hasRecipe,
-        recipeId: recipe?.id,
-        recipeName: recipe?.product_name,
-        materialsCount: recipe?.materials?.length || 0,
-        totalRecipesAvailable: recipes.filter((r) => !r.archived).length,
-        rejectionReason: !hasRecipe
-          ? "Receita não encontrada ou inválida"
-          : null,
-      },
-    );
+    // Log removido para melhorar performance
 
     return hasRecipe;
   };
 
   // Filter cash flow entries by date - ONLY FINAL PRODUCTS WITH REGISTERED RECIPES
   const getFilteredSales = () => {
-    console.log(
-      "🔍 [PresumedProfitManager] INICIANDO filtro de vendas - APENAS PRODUTOS FINAIS COM RECEITAS CADASTRADAS:",
-      {
-        totalCashFlowEntries: cashFlowEntries.length,
-        totalRecipes: recipes.length,
-        dateFilter,
-        customStartDate,
-        customEndDate,
-      },
-    );
+    // DEBUG: Desabilitado para performance - use DEBUG_LOGS.FILTERS_STATS = true para reativar
+    // console.log(
+    //   "🔍 [PresumedProfitManager] INICIANDO filtro de vendas - APENAS PRODUTOS FINAIS COM RECEITAS CADASTRADAS:",
+    //   {
+    //     totalCashFlowEntries: cashFlowEntries.length,
+    //     totalRecipes: recipes.length,
+    //     dateFilter,
+    //     customStartDate,
+    //     customEndDate,
+    //   },
+    // );
 
     const today = new Date();
     // FILTRO RIGOROSO PARA PRODUTOS FINAIS APENAS - Excluir produtos de revenda
@@ -842,14 +905,15 @@ const PresumedProfitManager = ({
 
       // PRIMEIRA VALIDAÇÃO: Excluir explicitamente produtos de revenda
       if (description.includes("TIPO_PRODUTO: revenda")) {
-        console.log(
-          `🚫 [PresumedProfitManager] EXCLUINDO produto de revenda:`,
-          {
-            id: entry.id,
-            description: description.substring(0, 100),
-            reason: "Produto marcado como revenda",
-          },
-        );
+        // DEBUG: Desabilitado para performance
+        // console.log(
+        //   `🚫 [PresumedProfitManager] EXCLUINDO produto de revenda:`,
+        //   {
+        //     id: entry.id,
+        //     description: description.substring(0, 100),
+        //     reason: "Produto marcado como revenda",
+        //   },
+        // );
         return false;
       }
 
@@ -859,14 +923,15 @@ const PresumedProfitManager = ({
         !description.includes("TIPO_PRODUTO:");
 
       if (!isFinalProduct) {
-        console.log(
-          `🚫 [PresumedProfitManager] EXCLUINDO - Não é produto final:`,
-          {
-            id: entry.id,
-            description: description.substring(0, 100),
-            reason: "Produto não marcado como final",
-          },
-        );
+        // DEBUG: Desabilitado para performance
+        // console.log(
+        //   `🚫 [PresumedProfitManager] EXCLUINDO - Não é produto final:`,
+        //   {
+        //     id: entry.id,
+        //     description: description.substring(0, 100),
+        //     reason: "Produto não marcado como final",
+        //   },
+        // );
         return false;
       }
 
@@ -897,15 +962,16 @@ const PresumedProfitManager = ({
         productName === "Produto Não Identificado" ||
         productName.trim() === ""
       ) {
-        console.log(
-          `🚫 [PresumedProfitManager] EXCLUINDO - Produto não identificado:`,
-          {
-            id: entry.id,
-            productName: productName || "[VAZIO]",
-            description: description.substring(0, 100),
-            reason: "Nome do produto não pôde ser extraído da descrição",
-          },
-        );
+        // DEBUG: Desabilitado para performance
+        // console.log(
+        //   `🚫 [PresumedProfitManager] EXCLUINDO - Produto não identificado:`,
+        //   {
+        //     id: entry.id,
+        //     productName: productName || "[VAZIO]",
+        //     description: description.substring(0, 100),
+        //     reason: "Nome do produto não pôde ser extraído da descrição",
+        //   },
+        // );
         return false;
       }
 
@@ -913,45 +979,48 @@ const PresumedProfitManager = ({
       const hasRecipe = hasRegisteredRecipe(productName);
 
       if (hasRecipe) {
-        console.log(
-          `✅ [PresumedProfitManager] APROVADO - Produto final com receita válida:`,
-          {
-            id: entry.id,
-            productName,
-            hasFinalTag: description.includes("TIPO_PRODUTO: final"),
-            hasNoTag: !description.includes("TIPO_PRODUTO:"),
-            description: description.substring(0, 100),
-          },
-        );
+        // DEBUG: Desabilitado para performance
+        // console.log(
+        //   `✅ [PresumedProfitManager] APROVADO - Produto final com receita válida:`,
+        //   {
+        //     id: entry.id,
+        //     productName,
+        //     hasFinalTag: description.includes("TIPO_PRODUTO: final"),
+        //     hasNoTag: !description.includes("TIPO_PRODUTO:"),
+        //     description: description.substring(0, 100),
+        //   },
+        // );
       } else {
-        console.log(
-          `🚫 [PresumedProfitManager] REJEITADO - Produto final SEM receita cadastrada válida:`,
-          {
-            id: entry.id,
-            productName,
-            description: description.substring(0, 100),
-            reason: "Receita não encontrada ou inválida no sistema de produção",
-          },
-        );
+        // DEBUG: Desabilitado para performance
+        // console.log(
+        //   `🚫 [PresumedProfitManager] REJEITADO - Produto final SEM receita cadastrada válida:`,
+        //   {
+        //     id: entry.id,
+        //     productName,
+        //     description: description.substring(0, 100),
+        //     reason: "Receita não encontrada ou inválida no sistema de produção",
+        //   },
+        // );
       }
 
       return hasRecipe;
     });
 
-    console.log(
-      "📊 [PresumedProfitManager] Vendas de PRODUTOS FINAIS COM RECEITAS encontradas antes do filtro de data:",
-      {
-        totalFinalProductSalesWithRecipesFound: filteredEntries.length,
-        finalProductSalesEntries: filteredEntries.map((entry) => ({
-          id: entry.id,
-          amount: entry.amount,
-          category: entry.category,
-          type: entry.type,
-          transaction_date: entry.transaction_date,
-          description: entry.description?.substring(0, 50) + "...",
-        })),
-      },
-    );
+    // DEBUG: Desabilitado para performance
+    // console.log(
+    //   "📊 [PresumedProfitManager] Vendas de PRODUTOS FINAIS COM RECEITAS encontradas antes do filtro de data:",
+    //   {
+    //     totalFinalProductSalesWithRecipesFound: filteredEntries.length,
+    //     finalProductSalesEntries: filteredEntries.map((entry) => ({
+    //       id: entry.id,
+    //       amount: entry.amount,
+    //       category: entry.category,
+    //       type: entry.type,
+    //       transaction_date: entry.transaction_date,
+    //       description: entry.description?.substring(0, 50) + "...",
+    //     })),
+    //   },
+    // );
 
     switch (dateFilter) {
       case "today":

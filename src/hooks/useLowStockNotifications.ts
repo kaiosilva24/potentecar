@@ -42,14 +42,7 @@ export const useLowStockNotifications = () => {
           const quantity = Number(stockItem.quantity) || 0;
           const minLevel = Number(stockItem.min_level) || 50; // Default to 50 as per our changes
           
-          console.log("🔍 [LowStockNotifications] Verificando item:", {
-            item_id: stockItem.item_id,
-            item_type: stockItem.item_type,
-            item_name: stockItem.item_name,
-            quantity,
-            minLevel,
-            isLowStock: minLevel > 0 && quantity <= minLevel
-          });
+          // Log removido para performance
           
           // Same logic as charts: minLevel > 0 && quantity <= minLevel
           if (minLevel > 0 && quantity <= minLevel) {
@@ -95,12 +88,7 @@ export const useLowStockNotifications = () => {
               }
             }
             
-            console.log("⚠️ [LowStockNotifications] Item com estoque baixo encontrado:", {
-              name: itemName,
-              category: categoryLabel,
-              currentStock: quantity,
-              minStock: minLevel
-            });
+            // Log removido para performance
             
             allLowStockItems.push({
               id: stockItem.item_id || stockItem.id,
@@ -116,17 +104,7 @@ export const useLowStockNotifications = () => {
 
       setLowStockItems(allLowStockItems);
       setLastUpdate(new Date());
-      console.log("📊 [LowStockNotifications] Verificação de estoque baixo concluída:", allLowStockItems.length, "itens");
-      if (allLowStockItems.length > 0) {
-        console.log("📊 [LowStockNotifications] Itens com estoque baixo encontrados:", allLowStockItems.map(item => ({
-          name: item.name,
-          category: item.categoryLabel,
-          current: item.currentStock,
-          min: item.minStock
-        })));
-      } else {
-        console.log("✅ [LowStockNotifications] Nenhum item com estoque baixo encontrado");
-      }
+      // Logs removidos para performance
     } catch (error) {
       console.error("❌ [LowStockNotifications] Erro ao verificar estoque baixo:", error);
     } finally {

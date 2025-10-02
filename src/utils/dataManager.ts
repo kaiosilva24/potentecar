@@ -3492,7 +3492,7 @@ export class DataManager {
   // Função para salvar lucro empresarial
   async saveBusinessProfit(profit: number): Promise<boolean> {
     try {
-      console.log('💾 [DataManager] Tentando salvar lucro empresarial:', profit);
+      // Log removido para melhorar performance
       
       // Primeiro, tentar atualizar o registro existente
       const { data: updateData, error: updateError } = await supabase
@@ -3522,11 +3522,11 @@ export class DataManager {
           return false;
         }
 
-        console.log('✅ [DataManager] Lucro empresarial inserido com sucesso:', profit);
+        // Log removido para melhorar performance
         return true;
       }
 
-      console.log('✅ [DataManager] Lucro empresarial atualizado com sucesso:', profit);
+      // Log removido para melhorar performance
       return true;
     } catch (error) {
       console.error('❌ [DataManager] Erro crítico ao salvar lucro empresarial:', error);
@@ -3685,7 +3685,7 @@ export class DataManager {
       }
 
       const baseline = parseFloat(data.value) || 0;
-      console.log('✅ [DataManager] Baseline do valor empresarial carregado:', baseline);
+      // Log removido para melhorar performance
       return baseline;
     } catch (error) {
       console.error('❌ [DataManager] Erro crítico ao carregar baseline do valor empresarial:', error);
@@ -3707,7 +3707,7 @@ export class DataManager {
       }
       
       const profit = currentValue - baseline;
-      console.log(`💰 [DataManager] Lucro calculado: R$ ${currentValue.toFixed(2)} - R$ ${baseline.toFixed(2)} = R$ ${profit.toFixed(2)}`);
+      // Log removido para melhorar performance
       
       // Salvar o lucro calculado
       await this.saveBusinessProfit(profit);
@@ -3981,8 +3981,9 @@ export class DataManager {
         data: {}
       };
 
-      // Mapeamento das tabelas do sistema (backup_name -> actual_table)
+      // Mapeamento COMPLETO das tabelas do sistema (backup_name -> actual_table)
       const tableMapping: { [key: string]: string } = {
+        // Tabelas principais
         'clients': 'customers',
         'products': 'raw_materials', 
         'services': 'services',
@@ -3991,11 +3992,32 @@ export class DataManager {
         'service_items': 'service_items',
         'system_settings': 'system_settings',
         'cash_flow': 'cash_flow_entries',
-        'expenses': 'expenses'
+        'expenses': 'expenses',
+        
+        // Tabelas de produção
+        'production_recipes': 'production_recipes',
+        'production_entries': 'production_entries',
+        'daily_production': 'daily_production',
+        
+        // Tabelas financeiras
+        'debts': 'debts',
+        'tire_cost_history': 'tire_cost_history',
+        'business_value_history': 'business_value_history',
+        
+        // Tabelas de vendas e garantia
+        'defective_tire_sales': 'defective_tire_sales',
+        'cost_simulations': 'cost_simulations',
+        'warranty_entries': 'warranty_entries',
+        
+        // Tabelas de configuração
+        'custom_units': 'custom_units',
+        
+        // Tabela de histórico de alterações
+        'change_history': 'change_history'
       };
 
-      // Exporta dados de cada tabela
-      for (const [backupName, actualTable] of Object.entries(tableMapping)) {
+      // Função para exportar uma tabela com tratamento de erros
+      const exportTable = async (backupName: string, actualTable: string, isOptional: boolean = false) => {
         try {
           console.log(`📥 Exportando ${actualTable} -> ${backupName}`);
           
@@ -4004,16 +4026,31 @@ export class DataManager {
             .select('*');
 
           if (error) {
-            console.error(`❌ Erro ao exportar tabela ${actualTable}:`, error);
-            exportData.data[backupName] = [];
+            if (error.code === '42P01' && isOptional) {
+              // Tabela não existe, mas é opcional
+              console.log(`⚠️ Tabela opcional ${actualTable} não existe - pulando`);
+              return;
+            } else {
+              console.error(`❌ Erro ao exportar tabela ${actualTable}:`, error);
+              exportData.data[backupName] = [];
+            }
           } else {
             exportData.data[backupName] = data || [];
             console.log(`✅ Tabela ${actualTable} exportada: ${data?.length || 0} registros`);
           }
         } catch (tableError) {
-          console.error(`❌ Erro crítico na exportação da tabela ${actualTable}:`, tableError);
-          exportData.data[backupName] = [];
+          if (isOptional) {
+            console.log(`⚠️ Erro na tabela opcional ${actualTable} - pulando:`, tableError);
+          } else {
+            console.error(`❌ Erro crítico na exportação da tabela ${actualTable}:`, tableError);
+            exportData.data[backupName] = [];
+          }
         }
+      };
+      
+      // Exportar dados de cada tabela com tratamento robusto de erros
+      for (const [backupName, actualTable] of Object.entries(tableMapping)) {
+        await exportTable(backupName, actualTable, true); // Todas como opcionais para robustez
       }
 
       console.log('✅ [DataManager] Exportação concluída com sucesso');
@@ -4042,8 +4079,9 @@ export class DataManager {
 
       console.log('📊 Backup válido encontrado:', importData.metadata);
 
-      // Mapeamento correto das tabelas do sistema
+      // Mapeamento COMPLETO das tabelas do sistema (backup_name -> actual_table)
       const tableMapping: { [key: string]: string } = {
+        // Tabelas principais
         'clients': 'customers',
         'products': 'raw_materials', 
         'services': 'services',
@@ -4052,7 +4090,28 @@ export class DataManager {
         'service_items': 'service_items',
         'system_settings': 'system_settings',
         'cash_flow': 'cash_flow_entries',
-        'expenses': 'expenses'
+        'expenses': 'expenses',
+        
+        // Tabelas de produção
+        'production_recipes': 'production_recipes',
+        'production_entries': 'production_entries',
+        'daily_production': 'daily_production',
+        
+        // Tabelas financeiras
+        'debts': 'debts',
+        'tire_cost_history': 'tire_cost_history',
+        'business_value_history': 'business_value_history',
+        
+        // Tabelas de vendas e garantia
+        'defective_tire_sales': 'defective_tire_sales',
+        'cost_simulations': 'cost_simulations',
+        'warranty_entries': 'warranty_entries',
+        
+        // Tabelas de configuração
+        'custom_units': 'custom_units',
+        
+        // Tabela de histórico de alterações
+        'change_history': 'change_history'
       };
 
       let successCount = 0;
@@ -4418,7 +4477,152 @@ export class DataManager {
 
       return null;
     } catch (error) {
-      console.error("❌ [DataManager] Erro em getTodayTireCostRecord:", error);
+      console.error(" [DataManager] Erro em getTodayTireCostRecord:", error);
+      return null;
+    }
+  }
+
+  // ==================== BUSINESS VALUE HISTORY METHODS ====================
+
+  // Função para salvar histórico diário de valor empresarial
+  async saveBusinessValueHistory(businessValue: number, baseline: number | null = null): Promise<boolean> {
+    try {
+      // WORKAROUND: Add +1 day to compensate Supabase UTC conversion
+      const today = new Date();
+      const tomorrow = new Date(today);
+      tomorrow.setDate(today.getDate() + 1);
+      const date = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
+
+      // Log removido para melhorar performance
+
+      // Check if record for this date already exists (usando maybeSingle para evitar erro 406)
+      const { data: existingRecord, error: checkError } = await (this.supabase as any)
+        .from("business_value_history")
+        .select("*")
+        .eq("date", date)
+        .maybeSingle();
+
+      if (checkError) {
+        // Se a tabela não existe, silenciosamente retornar false
+        if (checkError.code === '42P01') {
+          return false;
+        }
+        // Outros erros: apenas retornar false sem log
+        return false;
+      }
+
+      const profit = baseline !== null ? businessValue - baseline : 0;
+
+      if (existingRecord) {
+        // Update existing record
+        const { error: updateError } = await (this.supabase as any)
+          .from("business_value_history")
+          .update({
+            business_value: businessValue,
+            baseline_value: baseline,
+            profit_value: profit,
+            updated_at: new Date().toISOString()
+          })
+          .eq("date", date);
+
+        if (updateError) {
+          console.error(" [DataManager] Erro ao atualizar histórico de valor empresarial:", updateError);
+          return false;
+        }
+
+        // Log removido para melhorar performance
+      } else {
+        // Insert new record
+        const { error: insertError } = await (this.supabase as any)
+          .from("business_value_history")
+          .insert([{
+            date,
+            business_value: businessValue,
+            baseline_value: baseline,
+            profit_value: profit
+          }]);
+
+        if (insertError) {
+          console.error(" [DataManager] Erro ao inserir histórico de valor empresarial:", insertError);
+          return false;
+        }
+
+        // Log removido para melhorar performance
+      }
+
+      return true;
+    } catch (error) {
+      console.error(" [DataManager] Erro crítico em saveBusinessValueHistory:", error);
+      return false;
+    }
+  }
+
+  // Função para carregar histórico de valores empresariais em um período (OTIMIZADA)
+  async loadBusinessValueHistory(days: number = 30): Promise<any[]> {
+    try {
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(endDate.getDate() - days);
+
+      // WORKAROUND: Add +1 day to compensate Supabase UTC conversion
+      const endDateWithWorkaround = new Date(endDate);
+      endDateWithWorkaround.setDate(endDate.getDate() + 1);
+
+      const startDateStr = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, "0")}-${String(startDate.getDate()).padStart(2, "0")}`;
+      const endDateStr = `${endDateWithWorkaround.getFullYear()}-${String(endDateWithWorkaround.getMonth() + 1).padStart(2, "0")}-${String(endDateWithWorkaround.getDate()).padStart(2, "0")}`;
+
+      // Query otimizada: buscar APENAS os últimos 30 dias e ordenar por data
+      const { data, error } = await (this.supabase as any)
+        .from("business_value_history")
+        .select("date, business_value, baseline_value, profit_value")
+        .gte("date", startDateStr)
+        .lte("date", endDateStr)
+        .order("date", { ascending: true })
+        .limit(days); // Limitar ao número de dias solicitados
+
+      if (error) {
+        console.error(" [DataManager] Erro ao carregar histórico de valor empresarial:", error);
+        return [];
+      }
+
+      // Log removido para melhorar performance
+      return data || [];
+    } catch (error) {
+      console.error(" [DataManager] Erro crítico em loadBusinessValueHistory:", error);
+      return [];
+    }
+  }
+
+  // Função para obter registro de valor empresarial de hoje
+  async getTodayBusinessValueRecord(): Promise<any | null> {
+    try {
+      // WORKAROUND: Add +1 day to compensate Supabase UTC conversion
+      const today = new Date();
+      const tomorrow = new Date(today);
+      tomorrow.setDate(today.getDate() + 1);
+      const todayLocal = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
+
+      console.log(" [DataManager] WORKAROUND +1: Buscando registro de valor empresarial para data:", todayLocal);
+      
+      const { data, error } = await (this.supabase as any)
+        .from("business_value_history")
+        .select("date, business_value, baseline_value, profit_value")
+        .eq("date", todayLocal)
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          console.log(" [DataManager] Nenhum registro de valor empresarial encontrado para hoje");
+          return null;
+        }
+        console.error(" [DataManager] Erro ao buscar registro de hoje:", error);
+        return null;
+      }
+
+      console.log(" [DataManager] Registro de valor empresarial de hoje encontrado:", data);
+      return data;
+    } catch (error) {
+      console.error(" [DataManager] Erro em getTodayBusinessValueRecord:", error);
       return null;
     }
   }

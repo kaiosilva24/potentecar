@@ -41,6 +41,7 @@ import {
 import { useResaleProducts, useStockItems } from "@/hooks/useDataPersistence";
 import { ResaleProduct, StockItem } from "@/types/financial";
 import { useToast } from "@/components/ui/use-toast";
+import { StockBaselineManager } from "@/utils/stockBaselineManager";
 
 interface ResaleProductsStockProps {
   isLoading?: boolean;
@@ -193,39 +194,88 @@ const ResaleProductsStock = ({ isLoading = false }: ResaleProductsStockProps) =>
         // Update existing stock
         const currentQuantity = product.quantity || 0;
         const currentUnitCost = product.averageUnitValue || 0;
+        const currentTotalValue = product.totalValue || 0;
 
         let newQuantity = currentQuantity;
         let newUnitCost = currentUnitCost;
+        let newTotalValue = currentTotalValue;
 
         if (stockOperation === "add") {
           newQuantity = currentQuantity + quantityValue;
 
           // Calculate new total value if adding with a price
           if (priceValue > 0) {
-            const currentTotalValue = product.totalValue || 0;
             const addedValue = quantityValue * priceValue;
+            newTotalValue = currentTotalValue + addedValue;
             // O unit_cost será recalculado automaticamente pelo total_value / quantity
-            newUnitCost = newQuantity > 0 ? (currentTotalValue + addedValue) / newQuantity : priceValue;
+            newUnitCost = newQuantity > 0 ? newTotalValue / newQuantity : priceValue;
           } else {
             // Se não informou preço, manter o custo médio atual
             newUnitCost = currentUnitCost;
+            newTotalValue = newQuantity * newUnitCost;
           }
         } else {
+          // REMOVE operation
           newQuantity = Math.max(0, currentQuantity - quantityValue);
-          // Manter o mesmo custo unitário médio na remoção
-          newUnitCost = currentUnitCost;
+          
+          if (priceValue > 0) {
+            // REMOVER COM VALOR: Subtrai o valor informado e recalcula custo médio
+            const removedTotalValue = quantityValue * priceValue;
+            newTotalValue = Math.max(0, currentTotalValue - removedTotalValue);
+            
+            // Recalcula custo médio com base no novo valor total
+            if (newQuantity > 0) {
+              newUnitCost = newTotalValue / newQuantity;
+            } else {
+              newUnitCost = 0;
+            }
+            
+            console.log(`➖ [ResaleProductsStock] REMOÇÃO COM VALOR (recalcula custo médio):`, {
+              currentQuantity,
+              currentTotalValue,
+              quantityRemoved: quantityValue,
+              valuePerUnit: priceValue,
+              valueRemoved: removedTotalValue,
+              newQuantity,
+              newTotalValue,
+              newUnitCost
+            });
+          } else {
+            // REMOVER SEM VALOR: Usa custo médio atual
+            newUnitCost = currentUnitCost;
+            newTotalValue = newQuantity * newUnitCost;
+            
+            console.log(`➖ [ResaleProductsStock] REMOÇÃO SEM VALOR (usa custo médio):`, {
+              currentQuantity,
+              quantityRemoved: quantityValue,
+              newQuantity,
+              unitCostMaintained: newUnitCost
+            });
+          }
         }
+
+        // Calcular diferença de valor para ajuste do baseline
+        const valueDifference = newTotalValue - currentTotalValue;
+        
+        console.log(`📊 [ResaleProductsStock] Calculando diferença de valor:`, {
+          productName: product.name,
+          currentQuantity,
+          newQuantity,
+          currentTotalValue: currentTotalValue.toFixed(2),
+          newTotalValue: newTotalValue.toFixed(2),
+          valueDifference: valueDifference.toFixed(2)
+        });
 
         const updateData = {
           quantity: newQuantity,
           unit_cost: newUnitCost,
-          total_value: newQuantity * newUnitCost,
+          total_value: newTotalValue,
           last_updated: new Date().toISOString(),
         };
 
         console.log("📝 Atualizando estoque existente:", {
           stockId: product.stockId,
-          currentData: { quantity: currentQuantity, unitCost: currentUnitCost },
+          currentData: { quantity: currentQuantity, unitCost: currentUnitCost, totalValue: currentTotalValue },
           updateData
         });
 
@@ -236,6 +286,25 @@ const ResaleProductsStock = ({ isLoading = false }: ResaleProductsStockProps) =>
         }
 
         console.log("✅ Estoque atualizado com sucesso");
+        
+        // AJUSTAR BASELINE DO LUCRO EMPRESARIAL COM A DIFERENÇA
+        if (valueDifference > 0) {
+          // Aumentou o valor (adicionou estoque)
+          console.log(`💰 [ResaleProductsStock] Adicionando R$ ${valueDifference.toFixed(2)} ao baseline`);
+          await StockBaselineManager.adjustBaselineOnAdd(
+            Math.abs(newQuantity - currentQuantity),
+            Math.abs(valueDifference) / Math.abs(newQuantity - currentQuantity),
+            product.name
+          );
+        } else if (valueDifference < 0) {
+          // Diminuiu o valor (removeu estoque)
+          console.log(`💰 [ResaleProductsStock] Subtraindo R$ ${Math.abs(valueDifference).toFixed(2)} do baseline`);
+          await StockBaselineManager.adjustBaselineOnRemove(
+            Math.abs(newQuantity - currentQuantity),
+            Math.abs(valueDifference) / Math.abs(newQuantity - currentQuantity),
+            product.name
+          );
+        }
         
         // Disparar evento para sincronização em tempo real com StockCharts
         console.log('📡 [ResaleProductsStock] Disparando evento de sincronização...');
@@ -718,21 +787,28 @@ const ResaleProductsStock = ({ isLoading = false }: ResaleProductsStockProps) =>
                 </div>
               </div>
 
-              {stockOperation === "add" && (
-                <div>
-                  <Label>Preço Unitário (opcional)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={unitPrice}
-                    onChange={(e) => setUnitPrice(e.target.value)}
-                    onWheel={(e) => e.currentTarget.blur()}
-                    className="bg-factory-700/50 border-tire-600/30 text-white"
-                    placeholder="0.00"
-                  />
-                </div>
-              )}
+              <div>
+                <Label>
+                  {stockOperation === "add" 
+                    ? "Preço Unitário (opcional)" 
+                    : "Valor Unitário (opcional - para recalcular custo médio)"}
+                </Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={unitPrice}
+                  onChange={(e) => setUnitPrice(e.target.value)}
+                  onWheel={(e) => e.currentTarget.blur()}
+                  className="bg-factory-700/50 border-tire-600/30 text-white"
+                  placeholder="0.00"
+                />
+                {stockOperation === "remove" && (
+                  <p className="text-xs text-tire-400 mt-1">
+                    💡 Deixe em branco para usar o custo médio atual
+                  </p>
+                )}
+              </div>
 
               <div className="flex justify-end gap-2">
                 <Button

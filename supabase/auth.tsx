@@ -1,6 +1,14 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { User } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
+import { 
+  optimizedSignIn, 
+  quickSessionCheck, 
+  preloadCriticalData,
+  lazyLoadSecondaryData,
+  initializeAuthOptimizations,
+  AuthPerformanceMonitor 
+} from "../src/utils/authOptimizations";
 
 type AuthContextType = {
   user: User | null;
@@ -17,11 +25,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check active sessions and sets the user
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    // Inicializar otimizações
+    initializeAuthOptimizations();
+    
+    const initializeAuth = async () => {
+      const startTime = Date.now();
+      
+      try {
+        // Usar verificação rápida de sessão
+        const session = await quickSessionCheck();
+        setUser(session?.user ?? null);
+        
+        // Pré-carregar dados críticos se usuário logado
+        if (session?.user) {
+          preloadCriticalData();
+          // Carregar dados secundários em background
+          setTimeout(() => lazyLoadSecondaryData(), 2000);
+        }
+        
+        const duration = Date.now() - startTime;
+        AuthPerformanceMonitor.recordOperation('session_check', duration, true);
+        
+      } catch (error) {
+        console.error('Erro na inicialização de auth:', error);
+        const duration = Date.now() - startTime;
+        AuthPerformanceMonitor.recordOperation('session_check', duration, false);
+        
+        // Fallback para método original
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          setUser(session?.user ?? null);
+        } catch (fallbackError) {
+          console.error('Erro no fallback de auth:', fallbackError);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initializeAuth();
 
     // Listen for changes on auth state (signed in, signed out, etc.)
     const {
@@ -111,40 +153,74 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signIn = async (email: string, password: string) => {
-    console.log("Attempting to sign in with:", { email });
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    console.log("🔄 [AUTH] Tentando login otimizado com:", { email });
+    const startTime = Date.now();
+    
+    try {
+      // Usar login otimizado com timeout
+      const result = await optimizedSignIn(email, password);
+      
+      const duration = Date.now() - startTime;
+      AuthPerformanceMonitor.recordOperation('sign_in', duration, true);
+      
+      console.log("✅ [AUTH] Login otimizado bem-sucedido:", { 
+        duration: `${duration}ms`,
+        user: result?.data?.user ? "Logado" : "Não logado"
+      });
 
-    console.log("Sign in response:", { data, error });
+      // Verificar erros na resposta otimizada
+      if (result && typeof result === 'object' && 'error' in result) {
+        const typedResult = result as any;
+        if (typedResult.error) {
+          throw typedResult.error;
+        }
+      }
 
-    if (error) {
-      console.error("Sign in error details:", {
-        message: error.message,
-        status: error.status,
-        name: error.name,
+      // Pré-carregar dados críticos após login bem-sucedido
+      if (result && typeof result === 'object' && 'data' in result) {
+        const typedResult = result as any;
+        if (typedResult.data?.user) {
+          // Iniciar pré-carregamento em background
+          setTimeout(() => {
+            preloadCriticalData();
+            setTimeout(() => lazyLoadSecondaryData(), 1000);
+          }, 100);
+        }
+      }
+
+    } catch (error: any) {
+      const duration = Date.now() - startTime;
+      AuthPerformanceMonitor.recordOperation('sign_in', duration, false);
+      
+      console.error("❌ [AUTH] Erro no login otimizado:", {
+        message: error?.message,
+        status: error?.status,
+        duration: `${duration}ms`
       });
 
       // Provide Portuguese error messages based on error details
       if (
-        error.message.includes("Invalid login credentials") ||
-        error.message.includes("invalid_grant") ||
-        error.status === 400
+        error?.message?.includes("Invalid login credentials") ||
+        error?.message?.includes("invalid_grant") ||
+        error?.status === 400
       ) {
         throw new Error("Email ou senha inválidos.");
-      } else if (error.message.includes("Email not confirmed")) {
+      } else if (error?.message?.includes("Email not confirmed")) {
         throw new Error(
           "Email não confirmado. Verifique sua caixa de entrada.",
         );
-      } else if (error.message.includes("signup_disabled")) {
+      } else if (error?.message?.includes("signup_disabled")) {
         throw new Error("Cadastro desabilitado.");
-      } else if (error.message.includes("too_many_requests")) {
+      } else if (error?.message?.includes("too_many_requests")) {
         throw new Error(
           "Muitas tentativas. Tente novamente em alguns minutos.",
         );
+      } else if (error?.message?.includes("timeout")) {
+        throw new Error(
+          "Login demorou muito para responder. Verifique sua conexão e tente novamente.",
+        );
       } else {
-        throw new Error(`Erro de autenticação: ${error.message}`);
+        throw new Error(`Erro de autenticação: ${error?.message || 'Erro desconhecido'}`);
       }
     }
   };

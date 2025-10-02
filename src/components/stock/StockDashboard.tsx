@@ -55,7 +55,6 @@ import {
   rectSortingStrategy,
   useSortable,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import RawMaterialStock from "./RawMaterialStock";
 import ProductStock from "./ProductStock";
 import FinalProductsStock from "./FinalProductsStock";
@@ -69,6 +68,8 @@ import {
   useCostCalculationOptions,
 } from "@/hooks/useDataPersistence";
 import { useToast } from "@/components/ui/use-toast";
+import { dataManager } from "@/utils/dataManager";
+import { StockBaselineManager } from "@/utils/stockBaselineManager";
 
 interface StockDashboardProps {
   onRefresh?: () => void;
@@ -701,23 +702,54 @@ const StockDashboard = ({
       if (operation === "add") {
         const newQuantity = existingStock.quantity + quantity;
         let newUnitCost = existingStock.unit_cost;
+        let newTotalValue = existingStock.total_value;
 
         // Calculate weighted average cost if adding with a price
         if (unitPrice && unitPrice > 0) {
-          const currentTotalValue =
-            existingStock.quantity * existingStock.unit_cost;
-          const newTotalValue = quantity * unitPrice;
-          newUnitCost = (currentTotalValue + newTotalValue) / newQuantity;
+          // ADICIONAR: Soma ao valor total existente e recalcula média ponderada
+          const currentTotalValue = existingStock.total_value;
+          const addedTotalValue = quantity * unitPrice;
+          newTotalValue = currentTotalValue + addedTotalValue;
+          newUnitCost = newTotalValue / newQuantity;
+          
+          console.log(`➕ [StockDashboard] ADIÇÃO com preço:`, {
+            quantidadeAtual: existingStock.quantity,
+            valorTotalAtual: currentTotalValue,
+            quantidadeAdicionada: quantity,
+            precoUnitario: unitPrice,
+            valorAdicionado: addedTotalValue,
+            novaQuantidade: newQuantity,
+            novoValorTotal: newTotalValue,
+            novoCustoMedio: newUnitCost
+          });
+        } else {
+          // Se não tem preço, mantém o custo unitário e recalcula o total
+          newTotalValue = newQuantity * newUnitCost;
+          
+          console.log(`➕ [StockDashboard] ADIÇÃO sem preço (mantém custo médio):`, {
+            quantidadeAtual: existingStock.quantity,
+            quantidadeAdicionada: quantity,
+            novaQuantidade: newQuantity,
+            custoUnitarioMantido: newUnitCost,
+            novoValorTotal: newTotalValue
+          });
         }
 
         const updateData = {
           quantity: newQuantity,
           unit_cost: newUnitCost,
-          total_value: newQuantity * newUnitCost,
+          total_value: newTotalValue,
           last_updated: new Date().toISOString(),
         };
 
         await updateStockItem(existingStock.id, updateData);
+        
+        // AJUSTAR BASELINE DO LUCRO EMPRESARIAL
+        await StockBaselineManager.adjustBaselineOnAdd(
+          quantity,
+          unitPrice || existingStock.unit_cost,
+          existingStock.item_name
+        );
         
         // Dispatch manual do evento para garantir sincronização
         console.log('📡 [StockDashboard] Disparando evento stockItemsUpdated manualmente...');
@@ -731,15 +763,73 @@ const StockDashboard = ({
           }
         }));
       } else {
-        // Remove operation - keep same unit cost
+        // REMOVE operation
         const newQuantity = Math.max(0, existingStock.quantity - quantity);
+        let newUnitCost = existingStock.unit_cost;
+        let newTotalValue = existingStock.total_value;
+        
+        if (unitPrice && unitPrice > 0) {
+          // REMOVER COM VALOR: Subtrai o valor informado e recalcula custo médio
+          const currentTotalValue = existingStock.total_value;
+          const removedTotalValue = quantity * unitPrice;
+          newTotalValue = Math.max(0, currentTotalValue - removedTotalValue);
+          
+          // Recalcula custo médio com base no novo valor total
+          if (newQuantity > 0) {
+            newUnitCost = newTotalValue / newQuantity;
+          } else {
+            newUnitCost = 0;
+            newTotalValue = 0;
+          }
+          
+          console.log(`➖ [StockDashboard] REMOÇÃO COM VALOR (recalcula custo médio):`, {
+            quantidadeAtual: existingStock.quantity,
+            valorTotalAtual: currentTotalValue,
+            quantidadeRemovida: quantity,
+            valorUnitarioInformado: unitPrice,
+            valorRemovido: removedTotalValue,
+            novaQuantidade: newQuantity,
+            novoValorTotal: newTotalValue,
+            novoCustoMedio: newUnitCost
+          });
+        } else {
+          // REMOVER SEM VALOR: Usa custo médio atual
+          const currentTotalValue = existingStock.total_value;
+          const removedTotalValue = quantity * newUnitCost;
+          newTotalValue = Math.max(0, currentTotalValue - removedTotalValue);
+          
+          if (newQuantity === 0) {
+            newUnitCost = 0;
+            newTotalValue = 0;
+          }
+          
+          console.log(`➖ [StockDashboard] REMOÇÃO SEM VALOR (usa custo médio):`, {
+            quantidadeAtual: existingStock.quantity,
+            valorTotalAtual: currentTotalValue,
+            custoMedioAtual: existingStock.unit_cost,
+            quantidadeRemovida: quantity,
+            valorRemovido: removedTotalValue,
+            novaQuantidade: newQuantity,
+            novoValorTotal: newTotalValue,
+            novoCustoMedio: newUnitCost
+          });
+        }
+
         const updateData = {
           quantity: newQuantity,
-          total_value: newQuantity * existingStock.unit_cost,
+          unit_cost: newUnitCost,
+          total_value: newTotalValue,
           last_updated: new Date().toISOString(),
         };
 
         await updateStockItem(existingStock.id, updateData);
+        
+        // AJUSTAR BASELINE DO LUCRO EMPRESARIAL
+        await StockBaselineManager.adjustBaselineOnRemove(
+          quantity,
+          unitPrice || existingStock.unit_cost,
+          existingStock.item_name
+        );
         
         // Dispatch manual do evento para garantir sincronização
         console.log('📡 [StockDashboard] Disparando evento stockItemsUpdated manualmente...');

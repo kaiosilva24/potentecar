@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, memo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import TopNavigation from "../dashboard/layout/TopNavigation";
 import Sidebar from "../dashboard/layout/Sidebar";
 import DashboardGrid from "../dashboard/DashboardGrid";
@@ -9,19 +9,12 @@ import StockDashboard from "../stock/StockDashboard";
 import ProductionDashboard from "../production/ProductionDashboard";
 import SalesDashboard from "../sales/SalesDashboard";
 import DataDiagnostic from "../debug/DataDiagnostic";
-import TireCostDebug from "../debug/TireCostDebug";
-import AuthPerformanceDebug from "../debug/AuthPerformanceDebug";
-import PerformanceAuditDebug from "../debug/PerformanceAuditDebug";
-import TireCostInitializationDebug from "../debug/TireCostInitializationDebug";
-import TireCostFixTest from "../debug/TireCostFixTest";
 import StockCharts from "../stock/StockCharts";
 import ProductionChart from "../stock/ProductionChart";
 import potentCarLogo from "../../assets/potente-car.png";
 
 import { useDataPersistence, useDebts } from '../../hooks/useDataPersistence';
 import { supabase } from '../../../supabase/supabase';
-import { initializeDefaultTireCosts } from '../../utils/defaultTireCosts';
-import '../../utils/testTireCostFix'; // Importar função de teste global
 import PresumedProfitManager from "../financial/PresumedProfitManager";
 import ResaleProductProfitManager from "../financial/ResaleProductProfitManager";
 import TireCostManager from "../financial/TireCostManager";
@@ -113,8 +106,7 @@ const EmpresarialProfitChart = ({ cashFlowEntries, isLoading, empresarialValue }
       console.log("📊 [EmpresarialProfitChart] Carregando dados históricos de lucro empresarial...");
 
       const days = parseInt(dateFilter);
-      // Carregar dados históricos reais do banco de dados
-      const historicalData = await dataManager.loadBusinessValueHistory(days);
+      const historicalData = await dataManager.loadBusinessProfitHistory(days);
 
       console.log("🔍 [EmpresarialProfitChart] Dados históricos encontrados:", historicalData.length, "registros");
       console.log("🔍 [EmpresarialProfitChart] Dados:", historicalData);
@@ -133,54 +125,39 @@ const EmpresarialProfitChart = ({ cashFlowEntries, isLoading, empresarialValue }
         });
 
         // Verificar se temos dados reais para esta data
-        const realDataPoint = historicalData.find((item) => {
-          const itemDate = new Date(item.date);
-          const itemDateStr = itemDate.toLocaleDateString("pt-BR", {
-            day: "2-digit",
-            month: "2-digit",
-          });
-          return itemDateStr === dateStr;
-        });
+        const realDataPoint = historicalData.find(
+          (item) => item.date === dateStr
+        );
 
         if (realDataPoint) {
           // Usar dados reais
-          const businessValue = parseFloat(realDataPoint.business_value) || 0;
-          const baseline = realDataPoint.baseline_value ? parseFloat(realDataPoint.baseline_value) : null;
-          const profit = realDataPoint.profit_value ? parseFloat(realDataPoint.profit_value) : 0;
-          
           chartData.push({
             date: dateStr,
             displayDate: dateStr,
-            profit: profit,
-            businessValue: businessValue,
-            baseline: baseline,
+            profit: realDataPoint.businessProfit,
+            businessValue: realDataPoint.businessValue,
+            baseline: realDataPoint.baseline,
           });
-          // Log removido para melhorar performance
+          console.log(
+            "📊 [EmpresarialProfitChart] Usando dados reais para",
+            dateStr,
+            ":",
+            realDataPoint.businessProfit
+          );
         } else {
-          // Sem dados para esta data - mostrar valor atual se for hoje
-          const isToday = i === 0; // último dia do loop é hoje
-          if (isToday && empresarialValue !== null) {
-            // Para hoje, usar o valor empresarial atual
-            const currentProfit = businessBaseline !== null ? empresarialValue - businessBaseline : 0;
-            chartData.push({
-              date: dateStr,
-              displayDate: dateStr,
-              profit: currentProfit,
-              businessValue: empresarialValue,
-              baseline: businessBaseline,
-            });
-            // Log removido para melhorar performance
-          } else {
-            // Para outros dias sem dados - mostrar 0
-            chartData.push({
-              date: dateStr,
-              displayDate: dateStr,
-              profit: 0,
-              businessValue: 0,
-              baseline: null,
-            });
-            // Log removido para melhorar performance
-          }
+          // Sem dados para esta data - mostrar 0
+          chartData.push({
+            date: dateStr,
+            displayDate: dateStr,
+            profit: 0,
+            businessValue: 0,
+            baseline: null,
+          });
+          console.log(
+            "📊 [EmpresarialProfitChart] Sem dados para",
+            dateStr,
+            "- usando 0"
+          );
         }
       }
 
@@ -214,11 +191,15 @@ const EmpresarialProfitChart = ({ cashFlowEntries, isLoading, empresarialValue }
 
   // Salvar dados atuais no histórico
   const saveCurrentProfitToHistory = async () => {
-    if (empresarialValue !== null) {
-      // Salvar histórico diário de valor empresarial
-      const success = await dataManager.saveBusinessValueHistory(empresarialValue, businessBaseline);
+    if (empresarialValue !== null && businessBaseline !== null) {
+      const currentProfit = empresarialValue - businessBaseline;
+      const success = await dataManager.saveBusinessProfitHistory(
+        empresarialValue,
+        currentProfit,
+        businessBaseline
+      );
       if (success) {
-        console.log("✅ [EmpresarialProfitChart] Histórico de valor empresarial salvo com sucesso!");
+        console.log("✅ [EmpresarialProfitChart] Histórico de lucro salvo com sucesso!");
         // Recarregar dados do gráfico
         await loadBusinessProfitChartData();
       }
@@ -229,7 +210,7 @@ const EmpresarialProfitChart = ({ cashFlowEntries, isLoading, empresarialValue }
   useEffect(() => {
     loadCurrentBusinessProfit();
     loadBusinessProfitChartData();
-  }, [empresarialValue, businessBaseline, dateFilter]); // Recalcula quando valor empresarial, baseline ou filtro muda
+  }, [empresarialValue, dateFilter]); // Recalcula quando valor empresarial ou filtro muda
 
   // Auto-save do histórico quando há mudanças significativas
   useEffect(() => {
@@ -450,16 +431,9 @@ const EmpresarialProfitChart = ({ cashFlowEntries, isLoading, empresarialValue }
 
 // Main Dashboard Component with Financial Metrics
 const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
-  // Estados para carregamento progressivo otimizado
+  // Estados para carregamento progressivo
   const [loadingPhase, setLoadingPhase] = useState<'critical' | 'secondary' | 'complete'>('critical');
   const [showSecondaryData, setShowSecondaryData] = useState(false);
-  
-  // Cache para evitar recálculos desnecessários
-  const [cachedValues, setCachedValues] = useState({
-    cashBalance: null as number | null,
-    empresarialValue: null as number | null,
-    lastUpdate: 0
-  });
   
   // FASE 1: Dados críticos (carregamento imediato)
   const { cashFlowEntries, isLoading: cashFlowLoading } = useCashFlow();
@@ -499,35 +473,55 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
   const [chartsInitialized, setChartsInitialized] = useState(false);
   const [resaleDataVersion, setResaleDataVersion] = useState(0);
 
-  // Sistema de carregamento progressivo ULTRA-OTIMIZADO
+  // Sistema de carregamento progressivo
   useEffect(() => {
-    // Combinar todas as fases em um único useEffect para evitar cascatas
+    console.log('🚀 [Dashboard] Iniciando carregamento progressivo...');
     
     // Fase 1: Dados críticos carregados
-    if (!cashFlowLoading && !debtsLoading && loadingPhase === 'critical') {
+    if (!cashFlowLoading && !debtsLoading) {
+      console.log('✅ [Dashboard] Fase 1 completa - dados críticos carregados');
       setLoadingPhase('secondary');
-      setShowSecondaryData(true);
-      return;
+      
+      // Iniciar carregamento da fase 2 após um pequeno delay
+      setTimeout(() => {
+        setShowSecondaryData(true);
+        console.log('🔄 [Dashboard] Iniciando fase 2 - dados secundários');
+      }, 100);
     }
-    
-    // Fase 2: Dados secundários carregados - processar IMEDIATAMENTE
+  }, [cashFlowLoading, debtsLoading]);
+
+  // Fase 2: Dados secundários carregados
+  useEffect(() => {
     if (showSecondaryData && 
         !defectiveTireSalesLoading && 
         !productionLoading && 
         !materialsLoading && 
         !productsLoading && 
         !resaleProductsLoading && 
-        !stockItemsLoading &&
-        loadingPhase === 'secondary') {
+        !stockItemsLoading) {
       
-      // Batch todas as mudanças de estado em uma única atualização
-      requestAnimationFrame(() => {
-        setLoadingPhase('complete');
+      console.log('✅ [Dashboard] Fase 2 completa - dados secundários carregados');
+      setLoadingPhase('complete');
+      
+      // Iniciar carregamento da fase 3 após delay maior
+      setTimeout(() => {
         setLoadTertiaryData(true);
-        setChartsInitialized(true);
-      });
+        console.log('🔄 [Dashboard] Iniciando fase 3 - dados terciários');
+      }, 500);
     }
-  }, [cashFlowLoading, debtsLoading, showSecondaryData, defectiveTireSalesLoading, productionLoading, materialsLoading, productsLoading, resaleProductsLoading, stockItemsLoading, loadingPhase]);
+  }, [showSecondaryData, defectiveTireSalesLoading, productionLoading, materialsLoading, productsLoading, resaleProductsLoading, stockItemsLoading]);
+
+  // Inicialização dos gráficos otimizada
+  useEffect(() => {
+    if (loadingPhase === 'secondary') {
+      const timer = setTimeout(() => {
+        setChartsInitialized(true);
+        console.log('📊 [Dashboard] Gráficos inicializados');
+      }, 200); // Delay reduzido
+
+      return () => clearTimeout(timer);
+    }
+  }, [loadingPhase]);
 
   // Listener para eventos de sincronização de produtos de revenda
   useEffect(() => {
@@ -592,20 +586,14 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
 
   // Lógica de sincronização das métricas removida
 
-  // Cálculos de métricas MEMOIZADOS - Saldo de Caixa
-  const { totalIncome, totalExpense, cashBalance } = useMemo(() => {
-    const income = cashFlowEntries
-      .filter((entry) => entry.type === "income")
-      .reduce((sum, entry) => sum + entry.amount, 0);
-    const expense = cashFlowEntries
-      .filter((entry) => entry.type === "expense")
-      .reduce((sum, entry) => sum + entry.amount, 0);
-    return {
-      totalIncome: income,
-      totalExpense: expense,
-      cashBalance: income - expense
-    };
-  }, [cashFlowEntries]);
+  // Cálculos de métricas - Saldo de Caixa
+  const totalIncome = cashFlowEntries
+    .filter((entry) => entry.type === "income")
+    .reduce((sum, entry) => sum + entry.amount, 0);
+  const totalExpense = cashFlowEntries
+    .filter((entry) => entry.type === "expense")
+    .reduce((sum, entry) => sum + entry.amount, 0);
+  const cashBalance = totalIncome - totalExpense;
 
   // Função para formatar valores em moeda
   const formatCurrency = (value: number) => {
@@ -615,25 +603,43 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
     }).format(value);
   };
 
-  // Cálculo da Receita Total MEMOIZADO
-  const { totalRevenue, salesCount } = useMemo(() => {
-    const salesEntries = cashFlowEntries.filter(entry => 
-      entry.type === "income" && entry.category === "venda"
-    );
-    return {
-      totalRevenue: salesEntries.reduce((sum, entry) => sum + entry.amount, 0),
-      salesCount: salesEntries.length
-    };
-  }, [cashFlowEntries]);
+  // Cálculo da Receita Total (apenas vendas - igual ao dashboard de vendas)
+  const totalRevenue = cashFlowEntries
+    .filter((entry) => 
+      entry.type === "income" && 
+      entry.category === "venda"
+    )
+    .reduce((sum, entry) => sum + entry.amount, 0);
 
-  // Cálculo do Saldo de Produtos de Revenda OTIMIZADO (sem logs excessivos)
+  // Contador de vendas
+  const salesCount = cashFlowEntries.filter(entry => 
+    entry.type === "income" && entry.category === "venda"
+  ).length;
+
+  // Cálculo do Saldo de Produtos de Revenda em Estoque (sincronizado com aba de produtos de revenda)
   const resaleProductStockValue = useMemo(() => {
-    return resaleProducts.reduce((total, product) => {
+    const value = resaleProducts.reduce((total, product) => {
+      // Verificar se há estoque correspondente na tabela stock_items
       const stockItem = stockItems.find(item => 
         item.item_id === product.id && item.item_type === 'product'
       );
-      return total + (stockItem?.total_value || 0);
+
+      // Usar valores reais do estoque (mesma lógica da aba de produtos de revenda)
+      const stockValue = stockItem?.total_value || 0;
+
+      console.log(`💰 [MainDashboard] Produto de revenda: ${product.name}`, {
+        productId: product.id,
+        stockItemFound: !!stockItem,
+        stockValue,
+        quantity: stockItem?.quantity || 0,
+        unitCost: stockItem?.unit_cost || 0
+      });
+
+      return total + stockValue;
     }, 0);
+    
+    console.log(`📊 [MainDashboard] Valor total de produtos de revenda: R$ ${value.toFixed(2)}`);
+    return value;
   }, [resaleProducts, stockItems, resaleDataVersion]);
 
   // Estado para custo médio por pneu
@@ -648,18 +654,20 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
   const [averageTireProfit, setAverageTireProfit] = useState(0);
   const [isLoadingTireProfit, setIsLoadingTireProfit] = useState(true);
 
-  // Estado para lucro médio dos produtos de revenda OTIMIZADO
+  // Estado para lucro médio dos produtos de revenda - inicializar com null para evitar oscilação
   const [averageResaleProfit, setAverageResaleProfit] = useState<number | null>(() => {
+    // Tentar carregar valor inicial do localStorage imediatamente
     try {
       const localValue = localStorage.getItem('averageResaleProfit');
       if (localValue && localValue !== 'null' && localValue !== '0') {
         const parsed = parseFloat(localValue);
         if (!isNaN(parsed) && parsed > 0) {
+          console.log(`⚡ [Dashboard] Valor inicial carregado do localStorage: R$ ${parsed.toFixed(2)}`);
           return parsed;
         }
       }
     } catch (error) {
-      // Log silencioso
+      console.log('⚠️ [Dashboard] Erro ao carregar valor inicial do localStorage');
     }
     return null;
   });
@@ -702,24 +710,52 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
   const [isCreatingCheckpoint, setIsCreatingCheckpoint] = useState(false);
   const [checkpointStatus, setCheckpointStatus] = useState<string | null>(null);
 
-  // Função de debounce ULTRA-OTIMIZADA - Reduzido para 100ms para UI mais responsiva
-  const updateResaleProfitWithDebounce = useCallback((newProfit: number, source: string) => {
-    // Se o valor atual já é o mesmo, ignorar imediatamente
+  // Função de debounce para evitar oscilações
+  const updateResaleProfitWithDebounce = (newProfit: number, source: string) => {
+    const now = Date.now();
+    const timeSinceLastUpdate = now - lastUpdateTimestamp;
+
+    console.log(`🔄 [Dashboard] Tentativa de atualização de ${source}: R$ ${newProfit.toFixed(2)}`);
+    console.log(`🕰️ [Dashboard] Tempo desde última atualização: ${timeSinceLastUpdate}ms`);
+
+    // Se já há uma atualização pendente com o mesmo valor, ignorar
+    if (pendingUpdate !== null && Math.abs(pendingUpdate - newProfit) < 0.01) {
+      console.log(`⚠️ [Dashboard] Atualização ignorada - valor já pendente: R$ ${pendingUpdate.toFixed(2)}`);
+      return;
+    }
+
+    // Se o valor atual já é o mesmo, ignorar
     if (averageResaleProfit !== null && Math.abs(averageResaleProfit - newProfit) < 0.01) {
+      console.log(`✅ [Dashboard] Valor já atualizado: R$ ${averageResaleProfit.toFixed(2)}`);
       return;
     }
 
     // Rejeitar atualizações para R$ 0.00 quando há um valor válido anterior
     if (newProfit === 0 && averageResaleProfit !== null && averageResaleProfit > 0) {
+      console.log(`⛔ [Dashboard] Rejeitando atualização para R$ 0.00 de ${source} - mantendo valor atual: R$ ${averageResaleProfit.toFixed(2)}`);
       return;
     }
 
-    // Usar requestAnimationFrame para sincronizar com o ciclo de renderização do navegador
-    requestAnimationFrame(() => {
+    // Debounce de 300ms para evitar múltiplas atualizações
+    if (timeSinceLastUpdate < 300) {
+      console.log(`🔄 [Dashboard] Debounce ativo - agendando atualização em 300ms`);
+      setPendingUpdate(newProfit);
+
+      setTimeout(() => {
+        console.log(`⏰ [Dashboard] Executando atualização agendada: R$ ${newProfit.toFixed(2)}`);
+        setAverageResaleProfit(newProfit);
+        setIsLoadingResaleProfit(false);
+        setLastUpdateTimestamp(Date.now());
+        setPendingUpdate(null);
+      }, 300);
+    } else {
+      console.log(`⚡ [Dashboard] Atualização imediata: R$ ${newProfit.toFixed(2)}`);
       setAverageResaleProfit(newProfit);
       setIsLoadingResaleProfit(false);
-    });
-  }, [averageResaleProfit]);
+      setLastUpdateTimestamp(now);
+      setPendingUpdate(null);
+    }
+  };
 
   // Função para calcular lucro de revenda diretamente
   const calculateResaleProfitDirectly = async () => {
@@ -840,26 +876,6 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
         // Inicializar dados essenciais após verificar a configuração
         console.log('🚀 [Dashboard] Inicializando dados essenciais do sistema...');
         await ensureSystemDataExists();
-
-        // CRÍTICO: Inicializar custos padrão de pneus IMEDIATAMENTE
-        console.log('🔧 [Dashboard] Inicializando custos padrão de pneus...');
-        await initializeDefaultTireCosts();
-        
-        // Verificar se o tamanho problemático foi inicializado
-        const problematicSize = "165 70 13";
-        const productKey = `tireAnalysis_${problematicSize.toLowerCase().replace(/\s+/g, "_")}`;
-        const existingData = localStorage.getItem(productKey);
-        
-        if (existingData) {
-          console.log(`✅ [Dashboard] Tamanho "${problematicSize}" inicializado com sucesso`);
-        } else {
-          console.error(`❌ [Dashboard] FALHA: Tamanho "${problematicSize}" NÃO foi inicializado!`);
-          // Tentar novamente de forma síncrona
-          console.log('🔧 [Dashboard] Tentando inicialização síncrona...');
-          const { ensureTireCostExists } = await import('@/utils/defaultTireCosts');
-          const cost = ensureTireCostExists(problematicSize);
-          console.log(`🎯 [Dashboard] Resultado da inicialização síncrona: R$ ${cost}`);
-        }
 
       } catch (error) {
         console.warn('⚠️ [Dashboard] Erro na verificação do Supabase:', error);
@@ -1911,116 +1927,198 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
     };
   }, []);
 
-  // Monitorar mudanças no stockItems OTIMIZADO (sem timeout e logs excessivos)
+  // Monitorar mudanças no stockItems e calcular saldo de matéria-prima automaticamente
   useEffect(() => {
-    if (!stockItems.length || stockItemsLoading || !materials.length || materialsLoading) return;
+    if (!stockItemsLoading && stockItems.length >= 0) {
+      const timeoutId = setTimeout(async () => {
+        console.log('🔍 [Dashboard] Calculando saldo de matéria-prima automaticamente...');
+        console.log(`📊 [Dashboard] Total de stockItems: ${stockItems.length}`);
 
-    // Cálculo imediato sem timeout
-    const processStockItems = async () => {
-      // Filtrar apenas matéria-prima
-      const materialItems = stockItems.filter(item => item.item_type === 'material');
+        // Filtrar apenas matéria-prima
+        const materialItems = stockItems.filter(item => item.item_type === 'material');
+        console.log(`🏭 [Dashboard] Matérias-primas encontradas: ${materialItems.length}`);
 
-      // Calcular quantidade total de matéria-prima unitária (unidade "un")
-      const unitaryMaterialQuantity = materialItems.reduce((total, item) => {
-        const material = materials.find(m => m.id === item.item_id);
-        const itemUnit = material?.unit || item.unit || '';
-        return itemUnit === 'un' && item.quantity > 0 ? total + (item.quantity || 0) : total;
-      }, 0);
+        // Calcular quantidade total de matéria-prima unitária (unidade "un")
+        const unitaryMaterialQuantity = materialItems.reduce((total, item) => {
+          // Buscar o material para pegar sua unidade
+          const material = materials.find(m => m.id === item.item_id);
+          const itemUnit = material?.unit || item.unit || '';
 
-      // Atualizar quantidade unitária de matéria-prima
-      setRawMaterialUnitaryQuantity(unitaryMaterialQuantity);
-      setIsLoadingRawMaterialUnitaryQuantity(false);
+          if (itemUnit === 'un' && item.quantity > 0) {
+            console.log(`📦 [Dashboard] Material unitário encontrado: ${item.item_name} - Qtd: ${item.quantity}`);
+            return total + (item.quantity || 0);
+          }
+          return total;
+        }, 0);
 
-      // Calcular valor total das matérias-primas
-      const newBalance = materialItems.reduce((total, item) => total + (item.total_value || 0), 0);
+        // Atualizar quantidade unitária de matéria-prima
+        setRawMaterialUnitaryQuantity(unitaryMaterialQuantity);
+        setIsLoadingRawMaterialUnitaryQuantity(false);
 
-      // Só atualizar se houver diferença significativa
-      if (rawMaterialStockBalance === null || Math.abs((rawMaterialStockBalance || 0) - newBalance) > 0.01) {
-        try {
-          await dataManager.saveRawMaterialStockBalance(newBalance);
-          const updateEvent = new CustomEvent('rawMaterialBalanceUpdated', {
-            detail: {
-              balance: newBalance,
-              timestamp: Date.now(),
-              source: 'Dashboard-StockItemsMonitor'
-            }
-          });
-          window.dispatchEvent(updateEvent);
-          setRawMaterialStockBalance(newBalance);
-        } catch (error) {
-          // Log silencioso
-        }
-      }
+        console.log(`📦 [Dashboard] Quantidade unitária de matéria-prima: ${unitaryMaterialQuantity}`);
 
-      // Salvar quantidade unitária OTIMIZADO (sem logs excessivos)
-      try {
-        await dataManager.saveRawMaterialUnitaryQuantity(unitaryMaterialQuantity);
-        const quantityUpdateEvent = new CustomEvent('rawMaterialUnitaryQuantityUpdated', {
-          detail: {
-            quantity: unitaryMaterialQuantity,
-            timestamp: Date.now(),
-            source: 'Dashboard-StockItemsMonitor'
+        // Calcular valor total das matérias-primas
+        let newBalance = 0;
+        materialItems.forEach(item => {
+          const itemValue = item.total_value || 0;
+          newBalance += itemValue;
+
+          if (itemValue > 0) {
+            console.log(`  - ${item.item_name}: R$ ${itemValue.toFixed(2)} (qtd: ${item.quantity}, custo: ${item.unit_cost})`);
           }
         });
-        window.dispatchEvent(quantityUpdateEvent);
-      } catch (error) {
-        // Log silencioso
-      }
 
-      // CALCULAR QUANTIDADE TOTAL DE PRODUTOS FINAIS OTIMIZADO
-      const productItems = stockItems.filter(item => item.item_type === 'product');
-      const resaleProductIds = new Set(resaleProducts.map(p => p.id));
-      const finalProductItems = productItems.filter(item => !resaleProductIds.has(item.item_id));
-      const totalFinalProductQuantity = finalProductItems.reduce((total, item) => total + (Number(item.quantity) || 0), 0);
+        console.log(`💰 [Dashboard] Saldo calculado: R$ ${newBalance.toFixed(2)}`);
+        console.log(`💰 [Dashboard] Saldo atual no estado: R$ ${(rawMaterialStockBalance || 0).toFixed(2)}`);
 
-      if (finalProductTotalQuantity === null || finalProductTotalQuantity !== totalFinalProductQuantity) {
+        // Só atualizar se houver diferença significativa
+        if (rawMaterialStockBalance === null || Math.abs((rawMaterialStockBalance || 0) - newBalance) > 0.01) {
+          console.log(`🔄 [Dashboard] Atualizando saldo de matéria-prima: R$ ${newBalance.toFixed(2)}`);
+
+          // Salvar no Supabase
+          const success = await dataManager.saveRawMaterialStockBalance(newBalance);
+          if (success) {
+            console.log(`✅ [Dashboard] Saldo salvo com sucesso no Supabase: R$ ${newBalance.toFixed(2)}`);
+
+            // Disparar evento de atualização
+            const updateEvent = new CustomEvent('rawMaterialBalanceUpdated', {
+              detail: {
+                balance: newBalance,
+                timestamp: Date.now(),
+                source: 'Dashboard-StockItemsMonitor'
+              }
+            });
+            window.dispatchEvent(updateEvent);
+          }
+
+          // Atualizar estado local
+          setRawMaterialStockBalance(newBalance);
+        } else {
+          console.log(`✅ [Dashboard] Saldo já atualizado, não há necessidade de alterar`);
+        }
+
+        // Salvar quantidade unitária de matéria-prima no Supabase também
         try {
-          await dataManager.saveFinalProductTotalQuantity(totalFinalProductQuantity);
-          const updateEvent = new CustomEvent('finalProductTotalQuantityUpdated', {
-            detail: {
-              quantity: totalFinalProductQuantity,
-              timestamp: Date.now(),
-              source: 'Dashboard-StockItemsMonitor'
-            }
-          });
-          window.dispatchEvent(updateEvent);
+          const success = await dataManager.saveRawMaterialUnitaryQuantity(unitaryMaterialQuantity);
+          if (success) {
+            console.log(`✅ [Dashboard] Quantidade unitária de matéria-prima salva no Supabase: ${unitaryMaterialQuantity}`);
+            console.log(`📦 [Dashboard] Card "Matéria Prima Unitária" sincronizado com valor: ${unitaryMaterialQuantity}`);
+
+            // Disparar evento de atualização para quantidade unitária
+            const quantityUpdateEvent = new CustomEvent('rawMaterialUnitaryQuantityUpdated', {
+              detail: {
+                quantity: unitaryMaterialQuantity,
+                timestamp: Date.now(),
+                source: 'Dashboard-StockItemsMonitor'
+              }
+            });
+            window.dispatchEvent(quantityUpdateEvent);
+          }
+        } catch (error) {
+          console.warn('⚠️ [Dashboard] Erro ao salvar quantidade unitária de matéria-prima:', error);
+        }
+
+        // ===== CALCULAR QUANTIDADE TOTAL DE PRODUTOS FINAIS =====
+        console.log('🔍 [Dashboard] Calculando quantidade total de produtos finais...');
+
+        // Filtrar apenas produtos finais (não produtos de revenda)
+        const productItems = stockItems.filter(item => item.item_type === 'product');
+        const resaleProductIds = new Set(resaleProducts.map(p => p.id));
+        const finalProductItems = productItems.filter(item => !resaleProductIds.has(item.item_id));
+
+        console.log(`🏭 [Dashboard] Produtos finais encontrados: ${finalProductItems.length}`);
+
+        // Calcular quantidade total
+        const totalFinalProductQuantity = finalProductItems.reduce((total, item) => {
+          const quantity = Number(item.quantity) || 0;
+          console.log(`🏭 [Dashboard] Produto Final: ${item.item_name} - Qtd: ${quantity}`);
+          return total + quantity;
+        }, 0);
+
+        console.log(`🏭 [Dashboard] Quantidade total de produtos finais calculada: ${totalFinalProductQuantity}`);
+
+        // Só atualizar se houver diferença significativa
+        if (finalProductTotalQuantity === null || finalProductTotalQuantity !== totalFinalProductQuantity) {
+          console.log(`🔄 [Dashboard] Atualizando quantidade total de produtos finais: ${totalFinalProductQuantity}`);
+
+          // Salvar no Supabase
+          const success = await dataManager.saveFinalProductTotalQuantity(totalFinalProductQuantity);
+          if (success) {
+            console.log(`✅ [Dashboard] Quantidade total salva com sucesso no Supabase: ${totalFinalProductQuantity}`);
+
+            // Disparar evento de atualização
+            const updateEvent = new CustomEvent('finalProductTotalQuantityUpdated', {
+              detail: {
+                quantity: totalFinalProductQuantity,
+                timestamp: Date.now(),
+                source: 'Dashboard-StockItemsMonitor'
+              }
+            });
+            window.dispatchEvent(updateEvent);
+          }
+
+          // Atualizar estado local
           setFinalProductTotalQuantity(totalFinalProductQuantity);
           setIsLoadingFinalProductTotalQuantity(false);
-        } catch (error) {
-          // Log silencioso
+        } else {
+          console.log(`✅ [Dashboard] Quantidade total já atualizada: ${totalFinalProductQuantity}`);
         }
-      }
 
-      // CALCULAR QUANTIDADE TOTAL DE PRODUTOS REVENDA OTIMIZADO
-      const resaleProductItems = productItems.filter(item => resaleProductIds.has(item.item_id));
-      const totalResaleProductQuantity = resaleProductItems.reduce((total, item) => total + (Number(item.quantity) || 0), 0);
+        // ===== CALCULAR QUANTIDADE TOTAL DE PRODUTOS REVENDA =====
+        console.log('🔍 [Dashboard] Calculando quantidade total de produtos revenda...');
 
-      if (resaleProductTotalQuantity === null || resaleProductTotalQuantity !== totalResaleProductQuantity) {
-        try {
-          await dataManager.saveResaleProductTotalQuantity(totalResaleProductQuantity);
-          const updateEvent = new CustomEvent('resaleProductTotalQuantityUpdated', {
-            detail: {
-              quantity: totalResaleProductQuantity,
-              timestamp: Date.now(),
-              source: 'Dashboard-StockItemsMonitor'
-            }
-          });
-          window.dispatchEvent(updateEvent);
+        // Filtrar apenas produtos de revenda
+        const resaleProductItems = productItems.filter(item => resaleProductIds.has(item.item_id));
+
+        console.log(`🛍️ [Dashboard] Produtos revenda encontrados: ${resaleProductItems.length}`);
+
+        // Calcular quantidade total
+        const totalResaleProductQuantity = resaleProductItems.reduce((total, item) => {
+          const quantity = Number(item.quantity) || 0;
+          console.log(`🛍️ [Dashboard] Produto Revenda: ${item.item_name} - Qtd: ${quantity}`);
+          return total + quantity;
+        }, 0);
+
+        console.log(`🛍️ [Dashboard] Quantidade total de produtos revenda calculada: ${totalResaleProductQuantity}`);
+
+        // Só atualizar se houver diferença significativa
+        if (resaleProductTotalQuantity === null || resaleProductTotalQuantity !== totalResaleProductQuantity) {
+          console.log(`🔄 [Dashboard] Atualizando quantidade total de produtos revenda: ${totalResaleProductQuantity}`);
+
+          // Salvar no Supabase
+          const success = await dataManager.saveResaleProductTotalQuantity(totalResaleProductQuantity);
+          if (success) {
+            console.log(`✅ [Dashboard] Quantidade total de revenda salva com sucesso no Supabase: ${totalResaleProductQuantity}`);
+
+            // Disparar evento de atualização
+            const updateEvent = new CustomEvent('resaleProductTotalQuantityUpdated', {
+              detail: {
+                quantity: totalResaleProductQuantity,
+                timestamp: Date.now(),
+                source: 'Dashboard-StockItemsMonitor'
+              }
+            });
+            window.dispatchEvent(updateEvent);
+          }
+
+          // Atualizar estado local
           setResaleProductTotalQuantity(totalResaleProductQuantity);
           setIsLoadingResaleProductTotalQuantity(false);
-        } catch (error) {
-          // Log silencioso
+        } else {
+          console.log(`✅ [Dashboard] Quantidade total de revenda já atualizada: ${totalResaleProductQuantity}`);
         }
-      }
-    };
 
-    processStockItems(); // Execução imediata, sem timeout
+      }, 300); // Aguardar 300ms para garantir que os dados foram processados
+
+      return () => {
+        clearTimeout(timeoutId);
+      };
+    }
   }, [stockItems, stockItemsLoading, rawMaterialStockBalance, materials, materialsLoading, resaleProducts, finalProductTotalQuantity, resaleProductTotalQuantity]);
 
   // Log de comparação entre cálculo local e valor sincronizado
   useEffect(() => {
     if (resaleProductStockBalance !== null && !isLoadingResaleProductStock) {
-      // ... (rest of the code remains the same)
       const difference = Math.abs(resaleProductStockValue - resaleProductStockBalance);
       if (difference > 0.01) {
         console.log('⚠️ [Dashboard] Diferença detectada no saldo de produtos de revenda:');
@@ -2035,19 +2133,43 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
     }
   }, [resaleProductStockValue, resaleProductStockBalance, isLoadingResaleProductStock]);
 
-  // Monitorar mudanças no cashFlowEntries OTIMIZADO (sem timeout e logs excessivos)
+  // Monitorar mudanças no cashFlowEntries e calcular saldo de caixa automaticamente
   useEffect(() => {
     if (!cashFlowLoading && cashFlowEntries.length >= 0) {
-      const processCashFlow = async () => {
+      const timeoutId = setTimeout(async () => {
+        console.log('🔍 [Dashboard] Calculando saldo de caixa automaticamente...');
+        console.log(`📊 [Dashboard] Total de entradas no cashFlow: ${cashFlowEntries.length}`);
+
         // Calcular saldo baseado nas entradas de fluxo de caixa
-        const newBalance = cashFlowEntries.reduce((balance, entry) => {
-          return entry.type === 'income' ? balance + entry.amount : balance - entry.amount;
-        }, 0);
+        let newBalance = 0;
+        let totalIncome = 0;
+        let totalExpense = 0;
+
+        cashFlowEntries.forEach(entry => {
+          if (entry.type === 'income') {
+            totalIncome += entry.amount;
+            newBalance += entry.amount;
+          } else if (entry.type === 'expense') {
+            totalExpense += entry.amount;
+            newBalance -= entry.amount;
+          }
+        });
+
+        console.log(`💰 [Dashboard] Receitas: R$ ${totalIncome.toFixed(2)}`);
+        console.log(`💸 [Dashboard] Despesas: R$ ${totalExpense.toFixed(2)}`);
+        console.log(`💰 [Dashboard] Saldo calculado: R$ ${newBalance.toFixed(2)}`);
+        console.log(`💰 [Dashboard] Saldo atual no estado: R$ ${(cashBalanceState || 0).toFixed(2)}`);
 
         // Só atualizar se houver diferença significativa
         if (cashBalanceState === null || Math.abs((cashBalanceState || 0) - newBalance) > 0.01) {
-          try {
-            await dataManager.saveCashBalance(newBalance);
+          console.log(`🔄 [Dashboard] Atualizando saldo de caixa: R$ ${newBalance.toFixed(2)}`);
+
+          // Salvar no Supabase
+          const success = await dataManager.saveCashBalance(newBalance);
+          if (success) {
+            console.log(`✅ [Dashboard] Saldo salvo com sucesso no Supabase: R$ ${newBalance.toFixed(2)}`);
+
+            // Disparar evento de atualização
             const updateEvent = new CustomEvent('cashBalanceUpdated', {
               detail: {
                 balance: newBalance,
@@ -2056,14 +2178,18 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
               }
             });
             window.dispatchEvent(updateEvent);
-            setCashBalanceState(newBalance);
-          } catch (error) {
-            // Log silencioso
           }
+
+          // Atualizar estado local
+          setCashBalanceState(newBalance);
+        } else {
+          console.log(`✅ [Dashboard] Saldo já atualizado, não há necessidade de alterar`);
         }
+      }, 300); // Aguardar 300ms para garantir que os dados foram processados
+
+      return () => {
+        clearTimeout(timeoutId);
       };
-      
-      processCashFlow(); // Execução imediata
     }
   }, [cashFlowEntries, cashFlowLoading, cashBalanceState]);
 
@@ -2108,69 +2234,128 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
     return () => clearTimeout(timeoutId);
   }, [stockItems, stockItemsLoading]);
 
-  // Effect para inicializar saldos OTIMIZADO (sem logs excessivos)
+  // Effect para inicializar e sincronizar todos os saldos baseado nos dados existentes
   useEffect(() => {
+    const initializeBalances = () => {
+      console.log('🚀 [Dashboard] Inicializando sincronização de todos os saldos...');
+      
+      try {
+        // Usar saldo de caixa já calculado
+        console.log(`💰 [Dashboard] Saldo de caixa: R$ ${cashBalance.toFixed(2)}`);
+        setCashBalanceState(cashBalance);
+        setIsLoadingCashBalance(false);
+        
+        // Calcular saldo de matéria-prima baseado nos stockItems
+        const materialStockValue = stockItems
+          .filter(item => item.item_type === 'material')
+          .reduce((total, item) => total + (item.total_value || 0), 0);
+        console.log(`🏭 [Dashboard] Saldo de matéria-prima: R$ ${materialStockValue.toFixed(2)}`);
+        setRawMaterialStockBalance(materialStockValue);
+        setIsLoadingRawMaterialStock(false);
+        
+        // Calcular saldo de produtos finais baseado nos stockItems
+        const finalProductStockValue = stockItems
+          .filter(item => item.item_type === 'product')
+          .reduce((total, item) => total + (item.total_value || 0), 0);
+        console.log(`📦 [Dashboard] Saldo de produtos finais: R$ ${finalProductStockValue.toFixed(2)}`);
+        setFinalProductStockBalance(finalProductStockValue);
+        setIsLoadingFinalProductStock(false);
+        
+        // Usar saldo de produtos de revenda já calculado
+        console.log(`🛒 [Dashboard] Saldo de produtos de revenda: R$ ${resaleProductStockValue.toFixed(2)}`);
+        setResaleProductStockBalance(resaleProductStockValue);
+        setIsLoadingResaleProductStock(false);
+        
+        console.log('✅ [Dashboard] Todos os saldos sincronizados com sucesso!');
+        console.log('🔍 [Dashboard] RESUMO DOS SALDOS INICIALIZADOS:');
+        console.log(`  - cashBalanceState: R$ ${cashBalance.toFixed(2)}`);
+        console.log(`  - rawMaterialStockBalance: R$ ${materialStockValue.toFixed(2)}`);
+        console.log(`  - finalProductStockBalance: R$ ${finalProductStockValue.toFixed(2)}`);
+        console.log(`  - resaleProductStockBalance: R$ ${resaleProductStockValue.toFixed(2)}`);
+        console.log(`  - SOMA TOTAL (sem dívidas): R$ ${(cashBalance + materialStockValue + finalProductStockValue + resaleProductStockValue).toFixed(2)}`);
+      } catch (error) {
+        console.error('❌ [Dashboard] Erro ao sincronizar saldos:', error);
+      }
+    };
+    
+    // Só inicializar quando dados críticos estiverem carregados
     if (!isCriticalDataLoading && cashFlowEntries.length >= 0 && stockItems.length >= 0) {
-      // Inicialização rápida dos saldos
-      setCashBalanceState(cashBalance);
-      setIsLoadingCashBalance(false);
-      
-      const materialStockValue = stockItems
-        .filter(item => item.item_type === 'material')
-        .reduce((total, item) => total + (item.total_value || 0), 0);
-      setRawMaterialStockBalance(materialStockValue);
-      setIsLoadingRawMaterialStock(false);
-      
-      const finalProductStockValue = stockItems
-        .filter(item => item.item_type === 'product')
-        .reduce((total, item) => total + (item.total_value || 0), 0);
-      setFinalProductStockBalance(finalProductStockValue);
-      setIsLoadingFinalProductStock(false);
-      
-      setResaleProductStockBalance(resaleProductStockValue);
-      setIsLoadingResaleProductStock(false);
+      initializeBalances();
     }
   }, [isCriticalDataLoading, cashFlowEntries, stockItems, cashBalance, resaleProductStockValue]);
 
-  // Effect para calcular valor empresarial OTIMIZADO (sem logs excessivos)
-  const calculateEmpresarialValue = useCallback(() => {
-    if (
-      cashBalanceState !== null &&
-      rawMaterialStockBalance !== null &&
-      finalProductStockBalance !== null &&
-      resaleProductStockBalance !== null &&
-      !debtsLoading
-    ) {
-      const totalDebtRemaining = debts.reduce((sum, debt) => {
-        const remainingAmount = typeof debt.remaining_amount === 'number' 
-          ? debt.remaining_amount 
-          : parseFloat(debt.remaining_amount) || 0;
-        return sum + remainingAmount;
-      }, 0);
-      
-      const calculatedBusinessValue = 
-        cashBalanceState + 
-        rawMaterialStockBalance + 
-        finalProductStockBalance + 
-        resaleProductStockBalance - 
-        totalDebtRemaining;
-
-      setEmpresarialValue(calculatedBusinessValue);
-      setIsLoadingEmpresarialValue(false);
-      
-      // Salvar valor empresarial (sem await para não bloquear)
-      dataManager.saveBusinessValue(calculatedBusinessValue).catch(() => {});
-      
-      // Salvar no histórico diário também (sem await para não bloquear)
-      dataManager.loadBusinessValueBaseline().then(baseline => {
-        dataManager.saveBusinessValueHistory(calculatedBusinessValue, baseline).catch(() => {});
-      }).catch(() => {});
-    }
-  }, [cashBalanceState, rawMaterialStockBalance, finalProductStockBalance, resaleProductStockBalance, debts, debtsLoading]);
-
+  // Effect para calcular valor empresarial em tempo real
   useEffect(() => {
+    const calculateEmpresarialValue = () => {
+      // Só calcular se todos os valores estão carregados (incluindo dívidas)
+      if (
+        cashBalanceState !== null &&
+        rawMaterialStockBalance !== null &&
+        finalProductStockBalance !== null &&
+        resaleProductStockBalance !== null &&
+        !debtsLoading
+      ) {
+        // CORREÇÃO FINAL: Usar diretamente o remaining_amount das dívidas (mesmo valor do card "Saldo Devedor")
+        const totalDebtRemaining = debts.reduce((sum, debt) => {
+          const remainingAmount = typeof debt.remaining_amount === 'number' 
+            ? debt.remaining_amount 
+            : parseFloat(debt.remaining_amount) || 0;
+          return sum + remainingAmount;
+        }, 0);
+        
+        // CÁLCULO CORRETO: Somar todos os saldos e subtrair saldo devedor das dívidas
+        const calculatedBusinessValue = 
+          cashBalanceState + 
+          rawMaterialStockBalance + 
+          finalProductStockBalance + 
+          resaleProductStockBalance - 
+          totalDebtRemaining;
+        
+        console.log('💼 [Dashboard] Calculando Valor Empresarial (SOMA DINÂMICA COM DÍVIDAS):');
+        console.log(`  - Saldo Caixa: R$ ${cashBalanceState.toFixed(2)}`);
+        console.log(`  - Saldo Matéria-Prima: R$ ${rawMaterialStockBalance.toFixed(2)}`);
+        console.log(`  - Saldo Produtos Finais: R$ ${finalProductStockBalance.toFixed(2)}`);
+        console.log(`  - Saldo Produtos Revenda: R$ ${resaleProductStockBalance.toFixed(2)}`);
+        console.log('💳 [Dashboard] DETALHAMENTO DAS DÍVIDAS:');
+        console.log(`  - Total de dívidas encontradas: ${debts.length}`);
+        debts.forEach((debt, index) => {
+          console.log(`    ${index + 1}. ${debt.description}: remaining_amount = R$ ${(typeof debt.remaining_amount === 'number' ? debt.remaining_amount : parseFloat(debt.remaining_amount) || 0).toFixed(2)}`);
+        });
+        console.log(`  - SALDO DEVEDOR TOTAL: R$ ${totalDebtRemaining.toFixed(2)}`);
+        console.log(`  - VALOR EMPRESARIAL CALCULADO: R$ ${calculatedBusinessValue.toFixed(2)}`);
+        console.log(`  - FÓRMULA DETALHADA: ${cashBalanceState.toFixed(2)} + ${rawMaterialStockBalance.toFixed(2)} + ${finalProductStockBalance.toFixed(2)} + ${resaleProductStockBalance.toFixed(2)} - ${totalDebtRemaining.toFixed(2)} = ${calculatedBusinessValue.toFixed(2)}`);
+        console.log(`  - VERIFICAÇÃO: ${(cashBalanceState + rawMaterialStockBalance + finalProductStockBalance + resaleProductStockBalance - totalDebtRemaining).toFixed(2)}`);
+
+        // Validação adicional para garantir que o cálculo está correto
+        const manualCalculation = cashBalanceState + rawMaterialStockBalance + finalProductStockBalance + resaleProductStockBalance - totalDebtRemaining;
+        if (Math.abs(calculatedBusinessValue - manualCalculation) > 0.01) {
+          console.error('❌ [Dashboard] ERRO: Inconsistência no cálculo do valor empresarial!');
+          console.error(`  - calculatedBusinessValue: R$ ${calculatedBusinessValue.toFixed(2)}`);
+          console.error(`  - manualCalculation: R$ ${manualCalculation.toFixed(2)}`);
+          console.error(`  - Diferença: R$ ${Math.abs(calculatedBusinessValue - manualCalculation).toFixed(2)}`);
+        }
+
+        console.log(`🎯 [Dashboard] VALOR EMPRESARIAL FINAL DEFINIDO: R$ ${calculatedBusinessValue.toFixed(2)}`);
+        setEmpresarialValue(calculatedBusinessValue);
+        setIsLoadingEmpresarialValue(false);
+        
+        // Salvar o valor empresarial calculado no banco de dados para sincronização
+        dataManager.saveBusinessValue(calculatedBusinessValue).catch(error => {
+          console.error('❌ [Dashboard] Erro ao salvar valor empresarial no banco:', error);
+        });
+      } else {
+        console.log('⏳ [Dashboard] Aguardando todos os valores para calcular Valor Empresarial...');
+        console.log(`  - Saldo Caixa: ${cashBalanceState !== null ? `R$ ${cashBalanceState.toFixed(2)}` : 'LOADING'}`);
+        console.log(`  - Saldo Matéria-Prima: ${rawMaterialStockBalance !== null ? `R$ ${rawMaterialStockBalance.toFixed(2)}` : 'LOADING'}`);
+        console.log(`  - Saldo Produtos Finais: ${finalProductStockBalance !== null ? `R$ ${finalProductStockBalance.toFixed(2)}` : 'LOADING'}`);
+        console.log(`  - Saldo Produtos Revenda: ${resaleProductStockBalance !== null ? `R$ ${resaleProductStockBalance.toFixed(2)}` : 'LOADING'}`);
+        console.log(`  - Dívidas: ${!debtsLoading ? 'OK' : 'LOADING'}`);
+      }
+    };
+
+    // Calcular sempre que qualquer valor mudar (incluindo dívidas)
     calculateEmpresarialValue();
-  }, [calculateEmpresarialValue]);
+  }, [cashBalanceState, rawMaterialStockBalance, finalProductStockBalance, resaleProductStockBalance, debts, debtsLoading]);
 
   // Listeners para eventos de checkpoint - restauração de dados
   useEffect(() => {
@@ -2376,17 +2561,8 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
               </div>
             </CardContent>
           </Card>
-
-
         </div>
       </div>
-
-      {/* Gráfico de Lucro Empresarial */}
-      <EmpresarialProfitChart 
-        cashFlowEntries={cashFlowEntries}
-        isLoading={cashFlowLoading}
-        empresarialValue={empresarialValue}
-      />
 
       {/* Seção de Cards de Métricas - Layout 3x3 */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -2583,6 +2759,13 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
           </Card>
       </div>
 
+      {/* Gráfico de Lucro Empresarial - Carregamento Prioritário */}
+      <EmpresarialProfitChart
+        cashFlowEntries={cashFlowEntries}
+        isLoading={isCriticalDataLoading}
+        empresarialValue={empresarialValue}
+      />
+
       {/* Combined Charts Section - Carregamento Secundário */}
       {loadingPhase !== 'critical' && (
         <Card className="bg-factory-800/50 border-tire-600/30">
@@ -2738,284 +2921,124 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
         </Card>
       </div>
 
-      {/* Componentes de cálculo OTIMIZADOS - Carregamento Lazy */}
-      {loadTertiaryData && loadingPhase === 'complete' && (
+      {/* Componentes de cálculo em background - Carregamento Diferido */}
+      {loadTertiaryData && (
         <>
-          {/* Apenas componentes essenciais para sincronização */}
+          {/* PresumedProfitManager para cálculos em tempo real */}
           <div className="hidden">
-            <FinalProductsStock isLoading={false} />
+            <PresumedProfitManager
+              isLoading={isTertiaryDataLoading}
+              materials={materials}
+              employees={employees}
+              fixedCosts={fixedCosts}
+              variableCosts={variableCosts}
+              stockItems={stockItems}
+              productionEntries={productionEntries}
+              products={products}
+              cashFlowEntries={cashFlowEntries}
+              recipes={recipes}
+              defectiveTireSales={defectiveTireSales}
+              warrantyEntries={warrantyEntries}
+              hideCharts={true}
+            />
           </div>
+
+          {/* ResaleProductProfitManager para cálculos em tempo real */}
           <div className="hidden">
-            <ResaleProductsStock isLoading={false} />
+            <ResaleProductProfitManager
+              isLoading={isSecondaryDataLoading}
+              cashFlowEntries={cashFlowEntries}
+              stockItems={stockItems}
+              hideCharts={true}
+            />
+          </div>
+
+          {/* FinalProductsStock para sincronização em tempo real */}
+          <div className="hidden">
+            <FinalProductsStock
+              isLoading={isSecondaryDataLoading}
+            />
+          </div>
+
+          {/* TireCostManager para cálculos de custo por pneu */}
+          <div className="hidden">
+            <TireCostManager
+              isLoading={isTertiaryDataLoading}
+              materials={materials}
+              employees={employees}
+              fixedCosts={fixedCosts}
+              variableCosts={variableCosts}
+              stockItems={stockItems}
+              productionEntries={productionEntries}
+              products={products}
+              cashFlowEntries={cashFlowEntries}
+              recipes={recipes}
+              defectiveTireSales={defectiveTireSales}
+              warrantyEntries={warrantyEntries}
+            />
+          </div>
+
+          {/* ResaleProductsStock para sincronização */}
+          <div className="hidden">
+            <ResaleProductsStock
+              isLoading={isSecondaryDataLoading}
+            />
           </div>
         </>
       )}
 
 
-      {/* PresumedProfitManager OTIMIZADO - Apenas quando necessário */}
-      {loadingPhase === 'complete' && (
-        <div className="hidden">
-          <PresumedProfitManager
-            isLoading={false}
-            cashFlowEntries={cashFlowEntries || []}
-            materials={materials || []}
-            employees={employees || []}
-            fixedCosts={fixedCosts || []}
-            variableCosts={variableCosts || []}
-            stockItems={stockItems || []}
-            productionEntries={productionEntries || []}
-            products={products || []}
-            recipes={recipes || []}
-            defectiveTireSales={defectiveTireSales || []}
-            warrantyEntries={warrantyEntries || []}
-            hideCharts={true}
-          />
-        </div>
-      )}
-    </div>
-  );
-};
-
-const Home = () => {
-  const { t } = useTranslation();
-  const [loading, setLoading] = useState(false);
-  const [activeSection, setActiveSection] = useState("dashboard");
-  const { stockItems, updateStockItem, loadStockItems } = useStockItems(); // ✅ Usando Supabase em vez de localStorage
-  const [isDiagnosticOpen, setIsDiagnosticOpen] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-
-  // Function to trigger loading state for demonstration
-  const handleRefresh = () => {
-    setLoading(true);
-    // Reset loading after 2 seconds
-    setTimeout(() => {
-      setLoading(false);
-    }, 2000);
-  };
-
-  const handleSidebarClick = (label: string) => {
-    const sectionMap: { [key: string]: string } = {
-      Dashboard: "dashboard",
-      Financeiro: "financial",
-      Estoque: "inventory",
-      Produção: "production",
-      Cadastros: "registrations",
-      Vendas: "sales",
-      Settings: "settings", // Mapeamento correto para o valor "Settings" que vem da sidebar
-      Configurações: "settings", // Adicional para compatibilidade
-      Debug: "debug", // Seção de debug para testes
-    };
-    setActiveSection(sectionMap[label] || "dashboard");
-  };
-
-  // Process URL hash to set active section
-  useEffect(() => {
-    const hash = window.location.hash.replace('#', '');
-    console.log(`🔗 [Dashboard] Hash da URL detectado: "${hash}"`);
-
-    if (hash && hash !== activeSection) {
-      console.log(`🔄 [Dashboard] Mudando seção ativa de "${activeSection}" para "${hash}"`);
-      setActiveSection(hash);
-    }
-  }, []);
-
-  // Listen for stockItemsUpdated event to reload stock items
-  useEffect(() => {
-    const handleStockItemsUpdated = async () => {
-      console.log('🔄 [Home] Evento stockItemsUpdated recebido, recarregando itens de estoque...');
-      await loadStockItems();
-    };
-
-    window.addEventListener('stockItemsUpdated', handleStockItemsUpdated as EventListener);
-    // Also listen for the generic reload event from MainDashboard
-    window.addEventListener('forceStockItemsReload', handleStockItemsUpdated as EventListener);
-
-    return () => {
-      window.removeEventListener('stockItemsUpdated', handleStockItemsUpdated as EventListener);
-      window.removeEventListener('forceStockItemsReload', handleStockItemsUpdated as EventListener);
-    };
-  }, [loadStockItems]);
-
-
-  // ✅ Function updateStock now uses Supabase via hook useStockItems
-  const updateStock = async (
-    itemId: string,
-    itemType: "material" | "product",
-    quantity: number,
-    operation: "add" | "remove",
-    unitPrice?: number,
-    itemName?: string
-  ): Promise<void> => {
-    console.log(`🔄 [Home] Atualizando estoque via Supabase:`, {
-      itemId,
-      itemType,
-      quantity,
-      operation,
-      unitPrice,
-      itemName,
-    });
-
-    // Encontrar o item de estoque existente
-    const existingStock = stockItems.find(
-      (item) => item.item_id === itemId && item.item_type === itemType,
-    );
-
-    if (existingStock) {
-      // Preparar dados para atualização
-      let updateData: any = {
-        last_updated: new Date().toISOString(),
-      };
-
-      if (operation === "add") {
-        const newQuantity = existingStock.quantity + quantity;
-        let newUnitCost = existingStock.unit_cost;
-
-        // Calcular custo médio ponderado se adicionando com preço
-        if (unitPrice && unitPrice > 0) {
-          const currentTotalValue = existingStock.quantity * existingStock.unit_cost;
-          const newTotalValue = quantity * unitPrice;
-          newUnitCost = (currentTotalValue + newTotalValue) / newQuantity;
-        }
-
-        updateData = {
-          ...updateData,
-          quantity: newQuantity,
-          unit_cost: newUnitCost,
-          total_value: newQuantity * newUnitCost,
-        };
-      } else if (operation === "remove") {
-        const newQuantity = Math.max(0, existingStock.quantity - quantity);
-        updateData = {
-          ...updateData,
-          quantity: newQuantity,
-          total_value: newQuantity * existingStock.unit_cost,
-        };
-      }
-
-      // Atualizar via hook do Supabase
-      try {
-        await updateStockItem(existingStock.id, updateData);
-        console.log(`✅ [Home] Estoque atualizado com sucesso via Supabase`);
-
-        // Disparar evento para notificar outros componentes
-        const stockUpdateEvent = new CustomEvent('stockItemsUpdated', {
-          detail: {
-            timestamp: Date.now(),
-            source: 'Home-UpdateStock',
-            updateType: operation,
-            itemId: itemId,
-            itemType: itemType
-          }
-        });
-        window.dispatchEvent(stockUpdateEvent);
-
-      } catch (error) {
-        console.error(`❌ [Home] Erro ao atualizar estoque via Supabase:`, error);
-      }
-    } else {
-      console.warn(`⚠️ [Home] Item de estoque não encontrado:`, { itemId, itemType });
-    }
-  };
-  return (
-    <div className="h-screen bg-gradient-to-br from-factory-900 via-factory-800 to-tire-900 factory-grid overflow-hidden">
-      <div className="flex h-screen">
-        <Sidebar
-          onItemClick={handleSidebarClick}
-          activeItem={
-            activeSection === "dashboard"
-              ? "Dashboard"
-              : activeSection === "financial"
-                ? "Financeiro"
-                : activeSection === "inventory"
-                  ? "Estoque"
-                  : activeSection === "production"
-                    ? "Produção"
-                    : activeSection === "sales"
-                      ? "Vendas"
-                      : activeSection === "settings"
-                        ? "Configurações" // Adicionado caso para Configurações
-                        : "Cadastros"
-          }
-          isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-        />
-        <main className="flex-1 overflow-y-auto overflow-x-hidden">
-          {/* Header Section */}
-          <div className="container mx-auto px-6 pt-6 pb-4">
-            <div className="flex justify-between items-center mb-6">
-              <div className="space-y-2 flex flex-col items-center">
-                <img 
-                  src={potentCarLogo} 
-                  alt="Potente Car" 
-                  className="h-24 w-auto object-contain"
-                />
-                <p className="text-tire-300 text-lg text-center">
-                  {t(
-                    "dashboard.subtitle",
-                    "Sistema de Gestão Financeira e Produção",
-                  )}
-                </p>
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-white">
-                  {t("dashboard.title", "Dashboard")}
-                </h1>
-              </div>
-            </div>
-          </div>
-
-          <div
-            className={cn(
-              "container mx-auto p-6 space-y-8",
-              "transition-all duration-300 ease-in-out",
-            )}
-          >
-            {activeSection === "dashboard" && (
-              <MainDashboard isLoading={loading} />
-            )}
-            {activeSection === "financial" && (
-              <FinancialDashboard
-                isLoading={loading}
-                onRefresh={handleRefresh}
-              />
-            )}
-            {activeSection === "registrations" && (
-              <RegistrationDashboard
-                isLoading={loading}
-                onRefresh={handleRefresh}
-              />
-            )}
-            {activeSection === "inventory" && (
-              <StockDashboard isLoading={loading} onRefresh={handleRefresh} />
-            )}
-            {activeSection === "production" && (
-              <ProductionDashboard
-                isLoading={loading}
-                onRefresh={handleRefresh}
-                onStockUpdate={updateStock}
-              />
-            )}
-            {activeSection === "sales" && (
-              <SalesDashboard isLoading={loading} onRefresh={handleRefresh} />
-            )}
-            {activeSection === "settings" && ( // Renderiza SettingsDashboard quando activeSection for "settings"
-              <SettingsDashboard onRefresh={() => window.location.reload()} />
-            )}
-            {activeSection === "debug" && (
-              <div className="space-y-6">
-                <TireCostFixTest />
-                <TireCostInitializationDebug />
-                <PerformanceAuditDebug />
-                <AuthPerformanceDebug />
-                <TireCostDebug />
-                <DataDiagnostic />
-              </div>
-            )}
-          </div>
-        </main>
+      {/* PresumedProfitManager sempre ativo para calcular e salvar o Valor Empresarial correto */}
+      <div className="hidden">
+        {(() => {
+          const isLoadingValue = 
+            cashFlowLoading ||
+            materialsLoading ||
+            employeesLoading ||
+            fixedCostsLoading ||
+            variableCostsLoading ||
+            stockItemsLoading ||
+            productionLoading ||
+            productsLoading ||
+            recipesLoading ||
+            defectiveTireSalesLoading ||
+            warrantyEntriesLoading;
+          console.log('💼 [Dashboard] Renderizando PresumedProfitManager para calcular Valor Empresarial:', {
+            isLoading: isLoadingValue,
+            cashFlowEntries: cashFlowEntries.length,
+            materials: materials.length,
+            employees: employees.length,
+            fixedCosts: fixedCosts.length,
+            variableCosts: variableCosts.length,
+            stockItems: stockItems.length,
+            productionEntries: productionEntries.length,
+            products: products.length,
+            recipes: recipes.length,
+            defectiveTireSales: defectiveTireSales.length,
+            warrantyEntries: warrantyEntries.length
+          });
+          return (
+            <PresumedProfitManager
+              isLoading={isLoadingValue}
+              cashFlowEntries={cashFlowEntries || []}
+              materials={materials || []}
+              employees={employees || []}
+              fixedCosts={fixedCosts || []}
+              variableCosts={variableCosts || []}
+              stockItems={stockItems || []}
+              productionEntries={productionEntries || []}
+              products={products || []}
+              recipes={recipes || []}
+              defectiveTireSales={defectiveTireSales || []}
+              warrantyEntries={warrantyEntries || []}
+              hideCharts={true}
+            />
+          );
+        })()}
       </div>
+
     </div>
   );
 };
 
-export default Home;
+export default MainDashboard;

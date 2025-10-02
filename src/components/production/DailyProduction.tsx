@@ -41,6 +41,7 @@ import {
   StockItem,
 } from "@/types/financial";
 import ProductionChart from "@/components/stock/ProductionChart";
+import ProductionProfitManager from "@/utils/productionProfitManager";
 
 interface DailyProductionProps {
   recipes?: ProductionRecipe[];
@@ -113,6 +114,7 @@ const DailyProduction = ({
       material_name: string;
       unit: string;
       recipe_consumption: number;
+      production_loss_compensation: number;
       additional_loss: number;
       total_deduction: number;
       available_stock: number;
@@ -553,6 +555,26 @@ const DailyProduction = ({
 
       console.log("🔄 [DailyProduction] Aguardando sincronização completa...");
 
+      // NOVA FUNCIONALIDADE: Adicionar lucro da produção ao baseline do lucro empresarial
+      console.log("💰 [DailyProduction] Processando lucro da produção para baseline...");
+      try {
+        const profitAdded = await ProductionProfitManager.addProductionProfitToBaseline(
+          recipe.product_name,
+          quantity,
+          materialsToConsume,
+          stockItems
+        );
+        
+        if (profitAdded) {
+          console.log("✅ [DailyProduction] Lucro da produção processado com sucesso!");
+        } else {
+          console.log("⚠️ [DailyProduction] Lucro da produção não foi adicionado ao baseline");
+        }
+      } catch (profitError) {
+        console.error("❌ [DailyProduction] Erro ao processar lucro da produção:", profitError);
+        // Não interrompe o fluxo, apenas registra o erro
+      }
+
       // Reset form
       setSelectedRecipe("");
       setQuantityProduced("");
@@ -660,6 +682,26 @@ const DailyProduction = ({
         );
         await onDelete(entry.id);
 
+        // NOVA FUNCIONALIDADE: Remover lucro da produção do baseline do lucro empresarial
+        console.log("💰 [DailyProduction] Removendo lucro da produção do baseline...");
+        try {
+          const profitRemoved = await ProductionProfitManager.removeProductionProfitFromBaseline(
+            entry.product_name,
+            entry.quantity_produced,
+            entry.materials_consumed,
+            stockItems
+          );
+          
+          if (profitRemoved) {
+            console.log("✅ [DailyProduction] Lucro da produção removido do baseline com sucesso!");
+          } else {
+            console.log("⚠️ [DailyProduction] Lucro da produção não foi removido do baseline");
+          }
+        } catch (profitError) {
+          console.error("❌ [DailyProduction] Erro ao remover lucro da produção do baseline:", profitError);
+          // Não interrompe o fluxo, apenas registra o erro
+        }
+
         console.log("✅ [DailyProduction] Produção deletada com sucesso!");
       } catch (error) {
         console.error("❌ [DailyProduction] Erro ao deletar produção:", error);
@@ -675,6 +717,27 @@ const DailyProduction = ({
       style: "currency",
       currency: "BRL",
     }).format(value);
+  };
+
+  // Calculate total unit cost of materials consumed for one finished product
+  const calculateUnitMaterialCost = (entry: ProductionEntry) => {
+    let totalCost = 0;
+    
+    entry.materials_consumed.forEach((material) => {
+      // Find the stock item to get the unit cost
+      const stockItem = stockItems.find(
+        (item) => item.item_id === material.material_id && item.item_type === "material"
+      );
+      
+      if (stockItem) {
+        // Calculate cost for the quantity consumed
+        const materialCost = material.quantity_consumed * stockItem.unit_cost;
+        totalCost += materialCost;
+      }
+    });
+    
+    // Return cost per unit of finished product
+    return entry.quantity_produced > 0 ? totalCost / entry.quantity_produced : 0;
   };
 
   // Advanced filtering logic
@@ -1556,6 +1619,21 @@ const DailyProduction = ({
                               </span>
                             </div>
                           ))}
+                          
+                          {/* Unit Material Cost Display */}
+                          <div className="mt-3 pt-2 border-t border-tire-600/20">
+                            <div className="flex justify-between items-center">
+                              <span className="font-medium text-neon-blue">
+                                Valor total unitário dos materiais:
+                              </span>
+                              <span className="text-neon-green font-bold text-lg">
+                                {formatCurrency(calculateUnitMaterialCost(entry))}
+                              </span>
+                            </div>
+                            <p className="text-xs text-tire-400 mt-1">
+                              Custo dos materiais para produzir 1 unidade do produto
+                            </p>
+                          </div>
                         </div>
                       </div>
                     </div>

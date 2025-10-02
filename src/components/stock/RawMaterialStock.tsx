@@ -94,8 +94,8 @@ const RawMaterialStock = ({
     if (selectedMaterial && quantity && parseFloat(quantity) > 0) {
       try {
         const selectedMaterialData = activeMaterials.find(m => m.id === selectedMaterial);
-        const price =
-          operation === "add" && unitPrice ? parseFloat(unitPrice) : undefined;
+        // Passa o unitPrice tanto para ADD quanto para REMOVE
+        const price = unitPrice ? parseFloat(unitPrice) : undefined;
         
         console.log(`🔄 [RawMaterialStock] INICIANDO operação de estoque:`, {
           material: selectedMaterialData?.name,
@@ -196,9 +196,11 @@ const RawMaterialStock = ({
     }
   };
 
-  const filteredMaterials = activeMaterials.filter((material) =>
-    material.name.toLowerCase().includes(searchTerm.toLowerCase()),
-  );
+  // Filtrar materiais pela busca geral OU pela busca do dropdown
+  const filteredMaterials = activeMaterials.filter((material) => {
+    const searchText = searchTerm || materialSearch;
+    return material.name.toLowerCase().includes(searchText.toLowerCase());
+  });
 
   // Filtrar materiais para o dropdown de seleção
   const filteredMaterialsForDropdown = activeMaterials.filter((material) =>

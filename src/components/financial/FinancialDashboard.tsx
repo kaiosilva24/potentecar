@@ -95,6 +95,7 @@ const FinancialDashboard = ({
   const { resaleProducts, isLoading: resaleProductsLoading } =
     useResaleProducts();
   const { debts, updateDebt, refreshDebts } = useDebts();
+  const { updateStockItem } = useStockItems();
 
   // Enhanced wrapper handler for cash flow entries with debt payment integration
   const handleAddCashFlowEntry = async (
@@ -256,8 +257,83 @@ const FinancialDashboard = ({
         type: transactionToDelete.type,
         category: transactionToDelete.category,
         reference_name: transactionToDelete.reference_name,
-        amount: transactionToDelete.amount
+        amount: transactionToDelete.amount,
+        description: transactionToDelete.description
       });
+      
+      let stockRestored = false;
+      
+      // Check if this is a resale product sale that needs stock restoration
+      const isResaleSale = transactionToDelete.type === "income" && 
+                          (transactionToDelete.category === "venda" || transactionToDelete.category === "venda_prazo") &&
+                          transactionToDelete.description?.includes("TIPO_PRODUTO: revenda");
+      
+      if (isResaleSale && transactionToDelete.description) {
+        console.log("🏪 [FinancialDashboard] Detectada venda de produto de revenda sendo excluída, devolvendo ao estoque...");
+        
+        try {
+          // Extract product info from description
+          const productIdMatch = transactionToDelete.description.match(/PRODUCT_ID:\s*([a-f0-9-]+)/);
+          const quantityMatch = transactionToDelete.description.match(/Quantidade:\s*(\d+(?:\.\d+)?)/);
+          
+          if (productIdMatch && quantityMatch) {
+            const productId = productIdMatch[1];
+            const quantity = parseFloat(quantityMatch[1]);
+            
+            console.log("📦 [FinancialDashboard] Informações extraídas:", { productId, quantity });
+            
+            // Find the stock item for this resale product
+            const stockItem = stockItems.find(
+              (item) => item.item_id === productId && item.item_type === "product"
+            );
+            
+            if (stockItem) {
+              // Return quantity to stock
+              const newQuantity = stockItem.quantity + quantity;
+              const newTotalValue = newQuantity * stockItem.unit_cost;
+              
+              console.log("📦 [FinancialDashboard] Devolvendo ao estoque:", {
+                stockItemId: stockItem.id,
+                productName: stockItem.item_name,
+                previousQuantity: stockItem.quantity,
+                returnedQuantity: quantity,
+                newQuantity: newQuantity,
+                unitCost: stockItem.unit_cost,
+                newTotalValue: newTotalValue
+              });
+              
+              await updateStockItem(stockItem.id, {
+                quantity: newQuantity,
+                total_value: newTotalValue,
+                last_updated: new Date().toISOString(),
+              });
+              
+              console.log("✅ [FinancialDashboard] Estoque de produto de revenda restaurado com sucesso!");
+              stockRestored = true;
+              
+              // Dispatch stock update event for real-time sync
+              window.dispatchEvent(new CustomEvent('resaleStockUpdated', {
+                detail: { 
+                  productId: productId,
+                  productName: stockItem.item_name,
+                  operation: 'restore',
+                  newQuantity: newQuantity,
+                  timestamp: new Date().toISOString()
+                }
+              }));
+            } else {
+              console.error("❌ [FinancialDashboard] Item de estoque não encontrado para produto:", productId);
+              alert(`⚠️ Produto de revenda não encontrado no estoque.\n\nA exclusão continuará, mas o estoque não será restaurado.\n\nVerifique manualmente o produto: ${productId}`);
+            }
+          } else {
+            console.error("❌ [FinancialDashboard] Não foi possível extrair informações do produto da descrição");
+            console.log("🔍 [FinancialDashboard] Descrição completa:", transactionToDelete.description);
+          }
+        } catch (stockError) {
+          console.error("❌ [FinancialDashboard] Erro ao restaurar estoque:", stockError);
+          alert(`⚠️ Erro ao restaurar estoque: ${stockError.message || stockError}\n\nA exclusão continuará, mas verifique o estoque manualmente.`);
+        }
+      }
       
       // Check if this is a debt payment that needs to be reversed
       const isDebtPayment = transactionToDelete.type === "expense" && transactionToDelete.category === "Dívidas";
@@ -354,6 +430,12 @@ const FinancialDashboard = ({
       // Now delete the cash flow entry
       const success = await deleteCashFlowEntry(id);
       console.log('🔥 [FinancialDashboard] Resultado da exclusão:', success);
+      
+      // Show appropriate success message
+      if (stockRestored) {
+        alert(`✅ Venda excluída com sucesso!\n\n📦 Os produtos foram devolvidos ao estoque automaticamente.`);
+      }
+      
       return success;
     } catch (error) {
       console.error('❌ [FinancialDashboard] Erro ao deletar:', error);

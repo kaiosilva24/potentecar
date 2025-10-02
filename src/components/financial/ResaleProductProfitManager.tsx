@@ -158,9 +158,23 @@ const ResaleProductProfitManager = ({
   // Filter cash flow entries by date
   const getFilteredSales = () => {
     const today = new Date();
+    // Include both regular sales and credit sales (venda and venda_prazo)
+    // Also include raw material sales (TIPO_PRODUTO: materia_prima) and resale products (TIPO_PRODUTO: revenda)
     let filteredEntries = cashFlowEntries.filter(
-      (entry) => entry.type === "income" && entry.category === "venda",
+      (entry) => 
+        entry.type === "income" && 
+        (entry.category === "venda" || entry.category === "venda_prazo") &&
+        entry.description &&
+        (entry.description.includes("TIPO_PRODUTO: revenda") || 
+         entry.description.includes("TIPO_PRODUTO: materia_prima"))
     );
+    
+    console.log(`🔍 [ResaleProductProfitManager] Filtrando vendas:`, {
+      totalEntries: cashFlowEntries.length,
+      filteredCount: filteredEntries.length,
+      resaleCount: filteredEntries.filter(e => e.description?.includes("TIPO_PRODUTO: revenda")).length,
+      rawMaterialCount: filteredEntries.filter(e => e.description?.includes("TIPO_PRODUTO: materia_prima")).length
+    });
 
     switch (dateFilter) {
       case "today":
@@ -264,26 +278,67 @@ const ResaleProductProfitManager = ({
     );
   };
 
-  // Get cost for resale product from stock items
-  const getResaleProductCost = (productName: string) => {
-    // Find the resale product
+  // Check if a product is a raw material (matéria-prima)
+  const isRawMaterial = (productName: string, productId?: string) => {
+    // Check by ID if available
+    if (productId) {
+      return stockItems.some(
+        (item) => item.id === productId && item.item_type === "material"
+      );
+    }
+    // Check by name
+    return stockItems.some(
+      (item) => 
+        item.item_name.toLowerCase().trim() === productName.toLowerCase().trim() && 
+        item.item_type === "material"
+    );
+  };
+
+  // Get cost for resale product or raw material from stock items
+  const getProductCost = (productName: string, productId?: string) => {
+    // First, try to find as raw material by ID
+    if (productId) {
+      const rawMaterialItem = stockItems.find(
+        (item) => item.id === productId && item.item_type === "material"
+      );
+      if (rawMaterialItem) {
+        console.log(`💰 [ResaleProductProfitManager] Custo matéria-prima "${productName}": R$ ${rawMaterialItem.unit_cost.toFixed(2)}`);
+        return rawMaterialItem.unit_cost;
+      }
+    }
+
+    // Then, try to find as resale product
     const resaleProduct = resaleProducts.find(
       (product) =>
         product.name.toLowerCase().trim() ===
           productName.toLowerCase().trim() && !product.archived,
     );
 
-    if (!resaleProduct) {
-      return 0;
+    if (resaleProduct) {
+      // Find the stock item for this resale product
+      const stockItem = stockItems.find(
+        (item) =>
+          item.item_id === resaleProduct.id && item.item_type === "product",
+      );
+      
+      if (stockItem) {
+        console.log(`💰 [ResaleProductProfitManager] Custo produto revenda "${productName}": R$ ${stockItem.unit_cost.toFixed(2)}`);
+        return stockItem.unit_cost;
+      }
     }
 
-    // Find the stock item for this resale product
+    // Fallback: try to find by name in stock items (any type)
     const stockItem = stockItems.find(
-      (item) =>
-        item.item_id === resaleProduct.id && item.item_type === "product",
+      (item) => item.item_name.toLowerCase().trim() === productName.toLowerCase().trim()
     );
+    
+    if (stockItem) {
+      console.log(`💰 [ResaleProductProfitManager] Custo (fallback) "${productName}": R$ ${stockItem.unit_cost.toFixed(2)}`);
+      return stockItem.unit_cost;
+    }
 
-    return stockItem ? stockItem.unit_cost : 0;
+    console.warn(`⚠️ [ResaleProductProfitManager] Custo não encontrado para "${productName}"`);
+    return 0;
   };
 
   // Calculate profit data for resale products only
@@ -314,11 +369,15 @@ const ResaleProductProfitManager = ({
         }
       }
 
-      // Only process if it's a resale product
+      // Check if it's a resale product or raw material
       const isResale = isResaleProduct(productName);
-      console.log(`📝 [ResaleProductProfitManager] Produto: "${productName}" - É revenda? ${isResale}`);
+      const isRawMat = isRawMaterial(productName, productInfo?.productId);
       
-      if (!isResale) {
+      console.log(`📝 [ResaleProductProfitManager] Produto: "${productName}" - É revenda? ${isResale} - É matéria-prima? ${isRawMat}`);
+      
+      // Only process if it's a resale product OR raw material
+      if (!isResale && !isRawMat) {
+        console.log(`⏭️ [ResaleProductProfitManager] Pulando produto "${productName}" - não é revenda nem matéria-prima`);
         return;
       }
 
@@ -333,11 +392,19 @@ const ResaleProductProfitManager = ({
         salesCount: 0,
       };
 
-      // Calculate cost using stock item unit cost
-      const unitCost = getResaleProductCost(productName);
+      // Calculate cost using stock item unit cost (works for both resale products and raw materials)
+      const unitCost = getProductCost(productName, productInfo?.productId);
       const revenue = entry.amount;
       const totalCostForSale = unitCost * quantity;
       const profit = revenue - totalCostForSale;
+      
+      console.log(`💵 [ResaleProductProfitManager] Calculando lucro para "${productName}":`, {
+        quantity,
+        unitCost,
+        revenue,
+        totalCost: totalCostForSale,
+        profit
+      });
 
       existing.totalSales += quantity;
       existing.totalRevenue += revenue;

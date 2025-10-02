@@ -581,6 +581,11 @@ const CashFlowManager = ({
         // Check if this is a sale transaction that needs stock restoration
         const isSaleTransaction = entry.category === "venda" || entry.category === "venda_prazo";
         
+        // Variables to track product type (declared outside for use in success message)
+        let isRawMaterial = false;
+        let isResaleProduct = false;
+        let isFinalProduct = false;
+        
         if (isSaleTransaction && entry.description) {
           console.log('🔥 [FINANCIAL DELETE] É uma venda, extraindo informações do produto...');
           
@@ -588,11 +593,12 @@ const CashFlowManager = ({
           const productInfo = extractProductInfoFromSale(entry.description);
           console.log('🔥 [FINANCIAL DELETE] Info do produto extraída:', productInfo);
 
-          // Check if it's a resale product or final product
-          const isResaleProduct = entry.description.includes("TIPO_PRODUTO: revenda");
-          const isFinalProduct = entry.description.includes("TIPO_PRODUTO: final");
+          // Check if it's a resale product, raw material, or final product
+          isRawMaterial = entry.description.includes("TIPO_PRODUTO: materia_prima");
+          isResaleProduct = entry.description.includes("TIPO_PRODUTO: revenda");
+          isFinalProduct = entry.description.includes("TIPO_PRODUTO: final");
           
-          console.log('🔥 [FINANCIAL DELETE] Tipo de produto:', { isResaleProduct, isFinalProduct });
+          console.log('🔥 [FINANCIAL DELETE] Tipo de produto:', { isRawMaterial, isResaleProduct, isFinalProduct });
 
           if (productInfo) {
             console.log('🔥 [FINANCIAL DELETE] Produto ID para buscar:', productInfo.productId);
@@ -600,7 +606,71 @@ const CashFlowManager = ({
             
             // FIRST: Try to restore stock before deleting the transaction
             try {
-              if (isResaleProduct) {
+              if (isRawMaterial) {
+                console.log('🔥 [FINANCIAL DELETE] Processando matéria-prima...');
+                // Handle raw material stock restoration in stock_items table
+                const stockItem = stockItems.find(
+                  (item) => {
+                    const matches = item.id === productInfo.productId && item.item_type === "material";
+                    console.log('🔥 [FINANCIAL DELETE] Comparando item matéria-prima:', { 
+                      itemId: item.id, 
+                      itemName: item.item_name,
+                      itemType: item.item_type,
+                      searchingFor: productInfo.productId,
+                      matches: matches
+                    });
+                    return matches;
+                  }
+                );
+
+                console.log('🔥 [FINANCIAL DELETE] Item de estoque encontrado (matéria-prima):', stockItem);
+
+                if (stockItem) {
+                  // Return quantity to stock_items
+                  const newQuantity = stockItem.quantity + productInfo.quantity;
+                  const newTotalValue = newQuantity * stockItem.unit_cost;
+
+                  console.log('🔥 [FINANCIAL DELETE] Atualizando estoque matéria-prima:', {
+                    stockItemId: stockItem.id,
+                    stockItemName: stockItem.item_name,
+                    previousQuantity: stockItem.quantity,
+                    returnedQuantity: productInfo.quantity,
+                    newQuantity: newQuantity,
+                    unitCost: stockItem.unit_cost,
+                    newTotalValue: newTotalValue,
+                  });
+
+                  await updateStockItem(stockItem.id, {
+                    quantity: newQuantity,
+                    total_value: newTotalValue,
+                    last_updated: new Date().toISOString(),
+                  });
+
+                  console.log('✅✅✅ [FINANCIAL DELETE] ESTOQUE DE MATÉRIA-PRIMA RESTAURADO COM SUCESSO! ✅✅✅');
+                  stockRestored = true;
+                  
+                  // Dispatch stock update event for real-time sync
+                  window.dispatchEvent(new CustomEvent('stockItemsUpdated', {
+                    detail: { 
+                      productId: productInfo.productId,
+                      productName: stockItem.item_name,
+                      operation: 'restore',
+                      itemType: 'material',
+                      newQuantity: newQuantity,
+                      timestamp: new Date().toISOString()
+                    }
+                  }));
+                  console.log('📡 [FINANCIAL DELETE] Evento de sincronização disparado para matéria-prima');
+                } else {
+                  console.error('❌ [FINANCIAL DELETE] Item de estoque não encontrado para matéria-prima:', productInfo.productId);
+                  console.log('🔥 [FINANCIAL DELETE] Matérias-primas disponíveis:', stockItems.filter(item => item.item_type === 'material').map(item => ({
+                    id: item.id,
+                    name: item.item_name,
+                    type: item.item_type,
+                    quantity: item.quantity
+                  })));
+                }
+              } else if (isResaleProduct) {
                 console.log('🔥 [FINANCIAL DELETE] Processando produto de revenda...');
                 // Handle resale product stock restoration in stock_items table
                 const stockItem = stockItems.find(
@@ -735,10 +805,17 @@ const CashFlowManager = ({
 
         // Success message
         if (isSaleTransaction && stockRestored) {
-          alert(
-            `Transação excluída com sucesso!\n\n` +
-              `📦 Os produtos foram devolvidos ao estoque automaticamente.`,
-          );
+          let successMessage = `Transação excluída com sucesso!\n\n`;
+          if (isRawMaterial) {
+            successMessage += `📦 A matéria-prima foi devolvida ao estoque automaticamente.`;
+          } else if (isResaleProduct) {
+            successMessage += `📦 O produto de revenda foi devolvido ao estoque automaticamente.`;
+          } else if (isFinalProduct) {
+            successMessage += `📦 O produto final foi devolvido ao estoque automaticamente.`;
+          } else {
+            successMessage += `📦 Os produtos foram devolvidos ao estoque automaticamente.`;
+          }
+          alert(successMessage);
         } else {
           alert('Transação excluída com sucesso!');
         }

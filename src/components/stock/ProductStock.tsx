@@ -386,20 +386,19 @@ const ProductStock = ({
 
       let price: number | undefined = undefined;
 
-      if (operation === "add") {
-        if (isFinalProduct && selectedProductData) {
-          // Para produtos finais, usar custo específico baseado no nome do produto
-          price = getSpecificProductCost(selectedProductData.name);
-          console.log(
-            `💰 [ProductStock] Usando custo específico para produto final "${selectedProductData.name}": R$ ${price.toFixed(2)}`,
-          );
-        } else {
-          // Para produtos de revenda, usar o preço manual se fornecido
-          price = unitPrice ? parseFloat(unitPrice) : undefined;
-          console.log(
-            `💰 [ProductStock] Usando custo manual para produto revenda: R$ ${price?.toFixed(2) || "N/A"}`,
-          );
-        }
+      // Calcular preço tanto para ADD quanto para REMOVE
+      if (isFinalProduct && selectedProductData) {
+        // Para produtos finais, usar custo específico baseado no nome do produto
+        price = getSpecificProductCost(selectedProductData.name);
+        console.log(
+          `💰 [ProductStock] Usando custo específico para produto final "${selectedProductData.name}": R$ ${price.toFixed(2)} (operação: ${operation})`,
+        );
+      } else {
+        // Para produtos de revenda, usar o preço manual se fornecido
+        price = unitPrice ? parseFloat(unitPrice) : undefined;
+        console.log(
+          `💰 [ProductStock] Usando custo manual para produto revenda: R$ ${price?.toFixed(2) || "N/A"} (operação: ${operation})`,
+        );
       }
 
       onStockUpdate(

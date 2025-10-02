@@ -11,7 +11,6 @@ import {
   HelpCircle,
   FolderKanban,
   ShoppingCart,
-  Bug,
   ChevronLeft,
   ChevronRight,
   DollarSign,
