@@ -1,0 +1,25 @@
+# Arquivos e diretórios ignorados pelo Prettier
+
+# Diretórios de build
+dist/
+dist-ssr/
+
+# Dependências
+node_modules/
+
+# Arquivos de configuração
+.github/
+.vscode/
+
+# Arquivos gerados
+*.generated.*
+
+# Arquivos de lock
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Outros arquivos
+.DS_Store
+.env*
+*.log
