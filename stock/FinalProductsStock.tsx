@@ -460,19 +460,27 @@ const FinalProductsStock: React.FC<FinalProductsStockProps> = ({ isLoading = fal
   };
 
   // Apply search and filter logic
-  const filteredProductAnalysis = productAnalysis.filter(product => {
-    const matchesSearch = 
-      product.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.measures.toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredProductAnalysis = productAnalysis
+    .filter(product => {
+      const matchesSearch = 
+        product.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.measures.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesFilter = 
-      filterType === "all" || 
-      (filterType === "in-stock" && product.quantity > 0) ||
-      (filterType === "out-of-stock" && product.quantity === 0) ||
-      (filterType === "low-stock" && product.stockLevel === "low");
+      const matchesFilter = 
+        filterType === "all" || 
+        (filterType === "in-stock" && product.quantity > 0) ||
+        (filterType === "out-of-stock" && product.quantity === 0) ||
+        (filterType === "low-stock" && product.stockLevel === "low");
 
-    return matchesSearch && matchesFilter;
-  });
+      return matchesSearch && matchesFilter;
+    })
+    .sort((a, b) => {
+      // Ordenar alfabeticamente por nome do produto
+      return a.productName.localeCompare(b.productName, 'pt-BR', {
+        numeric: true,
+        sensitivity: 'base'
+      });
+    });
 
   // Calculate low stock count
   const lowStockCount = productAnalysis.filter(product => product.stockLevel === "low").length;
@@ -503,8 +511,8 @@ const FinalProductsStock: React.FC<FinalProductsStockProps> = ({ isLoading = fal
       }
     };
 
-    // Salvar apenas se o valor for válido e diferente de zero
-    if (grandTotal > 0 && filteredProductAnalysis.length > 0) {
+    // Salvar sempre que houver produtos (mesmo com valor zero)
+    if (filteredProductAnalysis.length > 0) {
       saveGrandTotal();
     }
   }, [filteredProductAnalysis]); // Reagir a mudanças nos produtos

@@ -340,9 +340,9 @@ const FinalProductsStock: React.FC<FinalProductsStockProps> = ({
       lastUpdate: realTimeUpdates.lastUpdate?.toISOString() || "Nunca",
     });
 
-    // Filtrar apenas produtos finais em estoque
+    // Filtrar produtos finais (incluindo zerados)
     const finalProductStockItems = stockItems.filter(
-      (item) => item.item_type === "product" && item.quantity > 0
+      (item) => item.item_type === "product"
     );
 
     const analysis = finalProductStockItems
@@ -955,27 +955,35 @@ const FinalProductsStock: React.FC<FinalProductsStockProps> = ({
   };
 
   // Apply search and filter logic
-  const filteredProductAnalysis = productAnalysis.filter((product) => {
-    const matchesSearch =
-      product.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.measures.toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredProductAnalysis = productAnalysis
+    .filter((product) => {
+      const matchesSearch =
+        product.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.measures.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesFilter =
-      filterType === "all" ||
-      (filterType === "in-stock" && product.quantity > 0) ||
-      (filterType === "out-of-stock" && product.quantity === 0) ||
-      (filterType === "low-stock" && product.stockLevel === "low");
+      const matchesFilter =
+        filterType === "all" ||
+        (filterType === "in-stock" && product.quantity > 0) ||
+        (filterType === "out-of-stock" && product.quantity === 0) ||
+        (filterType === "low-stock" && product.stockLevel === "low");
 
-    // Find the actual product to determine its type
-    const actualProduct = products.find((p) => p.id === product.productId);
-    const productType = actualProduct
-      ? getProductType(actualProduct.name)
-      : "final";
-    const matchesProductType =
-      productTypeFilter === "all" || productType === productTypeFilter;
+      // Find the actual product to determine its type
+      const actualProduct = products.find((p) => p.id === product.productId);
+      const productType = actualProduct
+        ? getProductType(actualProduct.name)
+        : "final";
+      const matchesProductType =
+        productTypeFilter === "all" || productType === productTypeFilter;
 
-    return matchesSearch && matchesFilter && matchesProductType;
-  });
+      return matchesSearch && matchesFilter && matchesProductType;
+    })
+    .sort((a, b) => {
+      // Ordenar alfabeticamente por nome do produto
+      return a.productName.localeCompare(b.productName, 'pt-BR', {
+        numeric: true,
+        sensitivity: 'base'
+      });
+    });
 
   // Calculate low stock count
   const lowStockCount = productAnalysis.filter(
