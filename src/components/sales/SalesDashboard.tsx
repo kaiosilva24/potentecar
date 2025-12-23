@@ -75,7 +75,7 @@ interface SalesDashboardProps {
 }
 
 const SalesDashboard = ({
-  onRefresh = () => {},
+  onRefresh = () => { },
   isLoading = false,
 }: SalesDashboardProps) => {
   const [activeTab, setActiveTab] = useState("pos");
@@ -119,6 +119,11 @@ const SalesDashboard = ({
   const [paymentMethod, setPaymentMethod] = useState<
     "DINHEIRO" | "PIX" | "CARTÃO" | "A PRAZO"
   >("DINHEIRO");
+  // Estado para data da venda (permite lançar vendas em datas específicas)
+  const [saleDate, setSaleDate] = useState(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  });
   const [isRawMaterialMode, setIsRawMaterialMode] = useState(false);
 
   // Autocomplete states for POS
@@ -252,6 +257,15 @@ const SalesDashboard = ({
 
   const formatPercentage = (value: number) => {
     return `${value.toFixed(2)}%`;
+  };
+
+  // Função auxiliar para calcular a data de transação com workaround UTC
+  const getTransactionDate = () => {
+    // Usa a data selecionada pelo usuário e aplica +1 dia para compensar Supabase UTC
+    const selectedDate = new Date(saleDate + "T12:00:00");
+    const adjustedDate = new Date(selectedDate);
+    adjustedDate.setDate(selectedDate.getDate() + 1);
+    return `${adjustedDate.getFullYear()}-${String(adjustedDate.getMonth() + 1).padStart(2, "0")}-${String(adjustedDate.getDate()).padStart(2, "0")}`;
   };
 
   // Get resale product IDs to exclude them from final products
@@ -715,7 +729,7 @@ const SalesDashboard = ({
   const averageCommission =
     activeSalespeople.length > 0
       ? activeSalespeople.reduce((sum, s) => sum + s.commission_rate, 0) /
-        activeSalespeople.length
+      activeSalespeople.length
       : 0;
 
   const totalStockValue = availableProducts.reduce(
@@ -1100,15 +1114,15 @@ const SalesDashboard = ({
 
         alert(
           `Garantia registrada com sucesso!\n\n` +
-            `Cliente: ${customer.name}\n` +
-            `Produto: ${product.item_name}\n` +
-            `Quantidade: ${quantity} ${product.unit}\n` +
-            `Vendedor: ${salesperson.name}\n\n` +
-            `📦 Estoque atualizado automaticamente:\n` +
-            `Quantidade anterior: ${product.quantity.toFixed(0)} ${product.unit}\n` +
-            `Nova quantidade: ${newQuantity.toFixed(0)} ${product.unit}\n\n` +
-            `📊 Garantia registrada no histórico de perdas\n` +
-            `👤 Total de garantias do cliente: ${currentWarrantyCount + 1}`
+          `Cliente: ${customer.name}\n` +
+          `Produto: ${product.item_name}\n` +
+          `Quantidade: ${quantity} ${product.unit}\n` +
+          `Vendedor: ${salesperson.name}\n\n` +
+          `📦 Estoque atualizado automaticamente:\n` +
+          `Quantidade anterior: ${product.quantity.toFixed(0)} ${product.unit}\n` +
+          `Nova quantidade: ${newQuantity.toFixed(0)} ${product.unit}\n\n` +
+          `📊 Garantia registrada no histórico de perdas\n` +
+          `👤 Total de garantias do cliente: ${currentWarrantyCount + 1}`
         );
 
         // Auto refresh to reload data and prepare for next warranty
@@ -1117,15 +1131,11 @@ const SalesDashboard = ({
         // Handle regular sale process
         if (productType === "final" && product) {
           // Final product sale - ALWAYS mark with TIPO_PRODUTO: final
-          // WORKAROUND: Add +1 day to compensate Supabase UTC conversion
-          const today = new Date();
-          const tomorrow = new Date(today);
-          tomorrow.setDate(today.getDate() + 1);
-          const todayLocal = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
+          const todayLocal = getTransactionDate();
           console.log("🗓️ [SALES DEBUG] Registrando venda produto final:", {
-            originalDate: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`,
+            selectedDate: saleDate,
             dateUsed: todayLocal,
-            note: "WORKAROUND: Adding +1 day to compensate Supabase UTC conversion",
+            note: "Using selected date with UTC workaround",
           });
 
           // Only register in cash flow if not a credit sale
@@ -1203,15 +1213,11 @@ const SalesDashboard = ({
               return;
             }
 
-            // WORKAROUND: Add +1 day to compensate Supabase UTC conversion
-            const today = new Date();
-            const tomorrow = new Date(today);
-            tomorrow.setDate(today.getDate() + 1);
-            const todayLocal = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
+            const todayLocal = getTransactionDate();
             console.log("🗓️ [SALES DEBUG] Registrando venda matéria-prima:", {
-              originalDate: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`,
+              selectedDate: saleDate,
               dateUsed: todayLocal,
-              note: "WORKAROUND: Adding +1 day to compensate Supabase UTC conversion",
+              note: "Using selected date with UTC workaround",
             });
 
             // Register in cash flow with materia_prima tag (appears in resale history)
@@ -1283,15 +1289,11 @@ const SalesDashboard = ({
             );
 
             // Resale product sale - ALWAYS mark with TIPO_PRODUTO: revenda
-            // WORKAROUND: Add +1 day to compensate Supabase UTC conversion
-            const today = new Date();
-            const tomorrow = new Date(today);
-            tomorrow.setDate(today.getDate() + 1);
-            const todayLocal = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
+            const todayLocal = getTransactionDate();
             console.log("🗓️ [SALES DEBUG] Registrando venda produto revenda:", {
-              originalDate: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`,
+              selectedDate: saleDate,
               dateUsed: todayLocal,
-              note: "WORKAROUND: Adding +1 day to compensate Supabase UTC conversion",
+              note: "Using selected date with UTC workaround",
             });
 
             // Only register in cash flow if not a credit sale
@@ -1360,11 +1362,11 @@ const SalesDashboard = ({
               found: !!stockItem,
               stockItem: stockItem
                 ? {
-                    id: stockItem.id,
-                    item_id: stockItem.item_id,
-                    item_type: stockItem.item_type,
-                    quantity: stockItem.quantity,
-                  }
+                  id: stockItem.id,
+                  item_id: stockItem.item_id,
+                  item_type: stockItem.item_type,
+                  quantity: stockItem.quantity,
+                }
                 : null,
             });
 
@@ -1427,14 +1429,14 @@ const SalesDashboard = ({
 
         alert(
           `Venda registrada com sucesso!\n\n` +
-            `Tipo: ${productTypeLabel}\n` +
-            `Cliente: ${customer.name}\n` +
-            `Produto: ${productName}\n` +
-            `Quantidade: ${quantity} ${productUnit}\n` +
-            `Preço Unitário: ${formatCurrency(parseFloat(unitPrice))}\n` +
-            `Valor Total: ${formatCurrency(parseFloat(saleValue))}\n` +
-            `Vendedor: ${salesperson.name}\n\n` +
-            `📦 Estoque atualizado automaticamente`
+          `Tipo: ${productTypeLabel}\n` +
+          `Cliente: ${customer.name}\n` +
+          `Produto: ${productName}\n` +
+          `Quantidade: ${quantity} ${productUnit}\n` +
+          `Preço Unitário: ${formatCurrency(parseFloat(unitPrice))}\n` +
+          `Valor Total: ${formatCurrency(parseFloat(saleValue))}\n` +
+          `Vendedor: ${salesperson.name}\n\n` +
+          `📦 Estoque atualizado automaticamente`
         );
 
         // Auto refresh to reload data and prepare for next sale
@@ -1477,21 +1479,17 @@ const SalesDashboard = ({
 
     try {
       // Process each product in the cart
-      for (const cartItem of productCart) {
-        // WORKAROUND: Add +1 day to compensate Supabase UTC conversion
-        const today = new Date();
-        const tomorrow = new Date(today);
-        tomorrow.setDate(today.getDate() + 1);
-        const todayLocal = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
+      const todayLocal = getTransactionDate();
 
+      for (const cartItem of productCart) {
         console.log(
           "🗓️ [MULTI-PRODUCT SALE DEBUG] Registrando venda multi-produto:",
           {
-            originalDate: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`,
+            selectedDate: saleDate,
             dateUsed: todayLocal,
             paymentMethod: paymentMethod,
             cartItem: cartItem.name,
-            note: "WORKAROUND: Adding +1 day to compensate Supabase UTC conversion",
+            note: "Using selected date with UTC workaround",
           }
         );
 
@@ -1662,12 +1660,12 @@ const SalesDashboard = ({
 
       alert(
         `Venda Multi-Produto registrada com sucesso!\n\n` +
-          `Cliente: ${customer.name}\n` +
-          `Vendedor: ${salesperson.name}\n` +
-          `Método de Pagamento: ${paymentMethod}\n` +
-          `Total de Itens: ${totalItems}\n` +
-          `Valor Total: ${formatCurrency(totalValue)}\n\n` +
-          `📦 Estoque atualizado automaticamente`
+        `Cliente: ${customer.name}\n` +
+        `Vendedor: ${salesperson.name}\n` +
+        `Método de Pagamento: ${paymentMethod}\n` +
+        `Total de Itens: ${totalItems}\n` +
+        `Valor Total: ${formatCurrency(totalValue)}\n\n` +
+        `📦 Estoque atualizado automaticamente`
       );
 
       // Auto refresh to reload data
@@ -1878,6 +1876,9 @@ const SalesDashboard = ({
     setSaleValue("");
     setProductType("final");
     setPaymentMethod("DINHEIRO");
+    // Reset sale date to today
+    const today = new Date();
+    setSaleDate(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`);
 
     // Reset autocomplete search fields and dropdowns for smooth continuous flow
     setSalespersonSearch("");
@@ -2448,8 +2449,8 @@ const SalesDashboard = ({
 
         alert(
           `Garantia excluída com sucesso!\n\n` +
-            `📦 Os produtos foram devolvidos ao estoque automaticamente.\n` +
-            `👤 Contador de garantias do cliente foi atualizado.`
+          `📦 Os produtos foram devolvidos ao estoque automaticamente.\n` +
+          `👤 Contador de garantias do cliente foi atualizado.`
         );
       } catch (error) {
         console.error("Erro ao excluir garantia:", error);
@@ -3058,10 +3059,10 @@ const SalesDashboard = ({
                         (total, sale) => total + sale.amount,
                         0
                       ) +
-                        resaleProductSalesHistory.reduce(
-                          (total, sale) => total + sale.amount,
-                          0
-                        )
+                      resaleProductSalesHistory.reduce(
+                        (total, sale) => total + sale.amount,
+                        0
+                      )
                     )}
                   </p>
                   <p className="text-xs text-tire-400 text-center mt-1">
@@ -3123,6 +3124,38 @@ const SalesDashboard = ({
               </p>
             </CardHeader>
             <CardContent className="space-y-6 bg-factory-900/60 rounded-lg">
+              {/* Data da Venda */}
+              <div className="space-y-2">
+                <Label className="text-tire-300 font-medium flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-neon-blue" />
+                  Data da Venda
+                </Label>
+                <div className="flex items-center gap-3">
+                  <Input
+                    type="date"
+                    value={saleDate}
+                    onChange={(e) => setSaleDate(e.target.value)}
+                    className="bg-factory-700/50 border-tire-600/30 text-white h-12 max-w-[200px] [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-70"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const today = new Date();
+                      setSaleDate(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`);
+                    }}
+                    className="bg-factory-700/30 border-tire-600/30 text-tire-300 hover:bg-neon-blue/20 hover:text-neon-blue hover:border-neon-blue/50"
+                  >
+                    <CalendarDays className="h-4 w-4 mr-1" />
+                    Hoje
+                  </Button>
+                </div>
+                <p className="text-tire-400 text-xs">
+                  Selecione a data em que a venda será registrada
+                </p>
+              </div>
+
               {/* Step 1: Vendedor */}
               <div className="space-y-2 relative">
                 <Label className="text-tire-300 font-medium">
@@ -3146,7 +3179,7 @@ const SalesDashboard = ({
                         if (filteredSalespeople.length > 0) {
                           const newIndex =
                             selectedSalespersonIndex <
-                            filteredSalespeople.length - 1
+                              filteredSalespeople.length - 1
                               ? selectedSalespersonIndex + 1
                               : 0;
                           setSelectedSalespersonIndex(newIndex);
@@ -3222,11 +3255,10 @@ const SalesDashboard = ({
                         <div
                           key={person.id}
                           onClick={() => handleSalespersonSelect(person)}
-                          className={`p-3 cursor-pointer text-white border-b border-tire-600/20 last:border-b-0 ${
-                            isSelected
-                              ? "bg-neon-blue/20 border-neon-blue/50"
-                              : "hover:bg-tire-700/50"
-                          }`}
+                          className={`p-3 cursor-pointer text-white border-b border-tire-600/20 last:border-b-0 ${isSelected
+                            ? "bg-neon-blue/20 border-neon-blue/50"
+                            : "hover:bg-tire-700/50"
+                            }`}
                         >
                           <div className="font-medium">{person.name}</div>
                           <div className="text-sm text-tire-400">
@@ -3346,11 +3378,10 @@ const SalesDashboard = ({
                         <div
                           key={customer.id}
                           onClick={() => handleCustomerSelect(customer)}
-                          className={`p-3 cursor-pointer text-white border-b border-tire-600/20 last:border-b-0 ${
-                            isSelected
-                              ? "bg-neon-blue/20 border-neon-blue/50"
-                              : "hover:bg-tire-700/50"
-                          }`}
+                          className={`p-3 cursor-pointer text-white border-b border-tire-600/20 last:border-b-0 ${isSelected
+                            ? "bg-neon-blue/20 border-neon-blue/50"
+                            : "hover:bg-tire-700/50"
+                            }`}
                         >
                           <div className="font-medium">{customer.name}</div>
                           <div className="text-sm text-tire-400">
@@ -3388,11 +3419,10 @@ const SalesDashboard = ({
                     <button
                       type="button"
                       onClick={() => setProductType("final")}
-                      className={`p-3 rounded-lg border transition-all ${
-                        productType === "final"
-                          ? "bg-neon-blue/20 border-neon-blue text-neon-blue"
-                          : "bg-factory-700/30 border-tire-600/30 text-tire-300 hover:bg-factory-600/30"
-                      }`}
+                      className={`p-3 rounded-lg border transition-all ${productType === "final"
+                        ? "bg-neon-blue/20 border-neon-blue text-neon-blue"
+                        : "bg-factory-700/30 border-tire-600/30 text-tire-300 hover:bg-factory-600/30"
+                        }`}
                     >
                       <div className="text-center">
                         <div className="text-lg font-medium">
@@ -3406,11 +3436,10 @@ const SalesDashboard = ({
                     <button
                       type="button"
                       onClick={() => setProductType("resale")}
-                      className={`p-3 rounded-lg border transition-all ${
-                        productType === "resale"
-                          ? "bg-neon-blue/20 border-neon-blue text-neon-blue"
-                          : "bg-factory-700/30 border-tire-600/30 text-tire-300 hover:bg-factory-600/30"
-                      }`}
+                      className={`p-3 rounded-lg border transition-all ${productType === "resale"
+                        ? "bg-neon-blue/20 border-neon-blue text-neon-blue"
+                        : "bg-factory-700/30 border-tire-600/30 text-tire-300 hover:bg-factory-600/30"
+                        }`}
                     >
                       <div className="text-center">
                         <div className="text-lg font-medium">
@@ -3424,11 +3453,10 @@ const SalesDashboard = ({
                     <button
                       type="button"
                       onClick={() => setProductType("warranty")}
-                      className={`p-3 rounded-lg border transition-all ${
-                        productType === "warranty"
-                          ? "bg-neon-purple/20 border-neon-purple text-neon-purple"
-                          : "bg-factory-700/30 border-tire-600/30 text-tire-300 hover:bg-factory-600/30"
-                      }`}
+                      className={`p-3 rounded-lg border transition-all ${productType === "warranty"
+                        ? "bg-neon-purple/20 border-neon-purple text-neon-purple"
+                        : "bg-factory-700/30 border-tire-600/30 text-tire-300 hover:bg-factory-600/30"
+                        }`}
                     >
                       <div className="text-center">
                         <div className="text-lg font-medium">🛡️ Garantia</div>
@@ -3466,11 +3494,10 @@ const SalesDashboard = ({
                   <Button
                     type="button"
                     onClick={() => setIsRawMaterialMode(!isRawMaterialMode)}
-                    className={`w-full h-12 text-base font-medium transition-all ${
-                      isRawMaterialMode
-                        ? "bg-gradient-to-r from-neon-orange to-orange-600 hover:from-orange-600 hover:to-neon-orange border-2 border-neon-orange text-white"
-                        : "bg-factory-700 hover:bg-factory-600 border-2 border-tire-600/50 text-tire-300 hover:text-white"
-                    }`}
+                    className={`w-full h-12 text-base font-medium transition-all ${isRawMaterialMode
+                      ? "bg-gradient-to-r from-neon-orange to-orange-600 hover:from-orange-600 hover:to-neon-orange border-2 border-neon-orange text-white"
+                      : "bg-factory-700 hover:bg-factory-600 border-2 border-tire-600/50 text-tire-300 hover:text-white"
+                      }`}
                   >
                     <Boxes className="h-5 w-5 mr-2" />
                     {isRawMaterialMode
@@ -3508,7 +3535,7 @@ const SalesDashboard = ({
                         if (filteredPOSProducts.length > 0) {
                           const newIndex =
                             selectedProductIndex <
-                            filteredPOSProducts.length - 1
+                              filteredPOSProducts.length - 1
                               ? selectedProductIndex + 1
                               : 0;
                           setSelectedProductIndex(newIndex);
@@ -3630,11 +3657,10 @@ const SalesDashboard = ({
                           <div
                             key={product.id}
                             onClick={() => handleProductSelect(product)}
-                            className={`p-3 cursor-pointer text-white border-b border-tire-600/20 last:border-b-0 ${
-                              isSelected
-                                ? "bg-neon-blue/20 border-neon-blue/50"
-                                : "hover:bg-tire-700/50"
-                            }`}
+                            className={`p-3 cursor-pointer text-white border-b border-tire-600/20 last:border-b-0 ${isSelected
+                              ? "bg-neon-blue/20 border-neon-blue/50"
+                              : "hover:bg-tire-700/50"
+                              }`}
                           >
                             <div className="font-medium">
                               {product.item_name}
@@ -3653,11 +3679,10 @@ const SalesDashboard = ({
                           <div
                             key={product.id}
                             onClick={() => handleProductSelect(product)}
-                            className={`p-3 cursor-pointer text-white border-b border-tire-600/20 last:border-b-0 ${
-                              isSelected
-                                ? "bg-neon-blue/20 border-neon-blue/50"
-                                : "hover:bg-tire-700/50"
-                            }`}
+                            className={`p-3 cursor-pointer text-white border-b border-tire-600/20 last:border-b-0 ${isSelected
+                              ? "bg-neon-blue/20 border-neon-blue/50"
+                              : "hover:bg-tire-700/50"
+                              }`}
                           >
                             <div className="font-medium">
                               <Boxes className="h-4 w-4 inline mr-1" />
@@ -3681,11 +3706,10 @@ const SalesDashboard = ({
                           <div
                             key={product.id}
                             onClick={() => handleProductSelect(product)}
-                            className={`p-3 cursor-pointer text-white border-b border-tire-600/20 last:border-b-0 ${
-                              isSelected
-                                ? "bg-neon-blue/20 border-neon-blue/50"
-                                : "hover:bg-tire-700/50"
-                            }`}
+                            className={`p-3 cursor-pointer text-white border-b border-tire-600/20 last:border-b-0 ${isSelected
+                              ? "bg-neon-blue/20 border-neon-blue/50"
+                              : "hover:bg-tire-700/50"
+                              }`}
                           >
                             <div className="font-medium">{product.name}</div>
                             <div className="text-sm text-tire-400">
@@ -3965,11 +3989,11 @@ const SalesDashboard = ({
                               <p className="text-tire-400 text-xs">
                                 {productType === "final"
                                   ? availableProducts.find(
-                                      (p) => p.id === item.originalProductId
-                                    )?.unit
+                                    (p) => p.id === item.originalProductId
+                                  )?.unit
                                   : availableResaleProducts.find(
-                                      (p) => p.id === item.originalProductId
-                                    )?.unit}
+                                    (p) => p.id === item.originalProductId
+                                  )?.unit}
                               </p>
                             </div>
 
@@ -4214,11 +4238,11 @@ const SalesDashboard = ({
                         <span className="text-white">
                           {productType === "final"
                             ? availableProducts.find(
-                                (p) => p.id === selectedProduct
-                              )?.item_name
+                              (p) => p.id === selectedProduct
+                            )?.item_name
                             : availableResaleProducts.find(
-                                (p) => p.id === selectedProduct
-                              )?.name}
+                              (p) => p.id === selectedProduct
+                            )?.name}
                         </span>
                       </div>
                       <div className="flex justify-between">
@@ -4227,11 +4251,11 @@ const SalesDashboard = ({
                           {quantity}{" "}
                           {productType === "final"
                             ? availableProducts.find(
-                                (p) => p.id === selectedProduct
-                              )?.unit
+                              (p) => p.id === selectedProduct
+                            )?.unit
                             : availableResaleProducts.find(
-                                (p) => p.id === selectedProduct
-                              )?.unit}
+                              (p) => p.id === selectedProduct
+                            )?.unit}
                         </span>
                       </div>
                       <div className="flex justify-between">
@@ -4348,10 +4372,10 @@ const SalesDashboard = ({
                     onChange={(e) =>
                       setPaymentMethod(
                         e.target.value as
-                          | "DINHEIRO"
-                          | "PIX"
-                          | "CARTÃO"
-                          | "A PRAZO"
+                        | "DINHEIRO"
+                        | "PIX"
+                        | "CARTÃO"
+                        | "A PRAZO"
                       )
                     }
                     className="w-full px-3 py-2 bg-factory-700/50 border border-tire-600/30 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-neon-blue"
@@ -4379,19 +4403,18 @@ const SalesDashboard = ({
                   (isMultiProductMode
                     ? productCart.length === 0
                     : !selectedProduct ||
-                      !quantity ||
-                      parseFloat(quantity) <= 0 ||
-                      (productType !== "warranty" &&
-                        (!unitPrice ||
-                          !saleValue ||
-                          parseFloat(unitPrice) <= 0 ||
-                          parseFloat(saleValue) <= 0)))
+                    !quantity ||
+                    parseFloat(quantity) <= 0 ||
+                    (productType !== "warranty" &&
+                      (!unitPrice ||
+                        !saleValue ||
+                        parseFloat(unitPrice) <= 0 ||
+                        parseFloat(saleValue) <= 0)))
                 }
-                className={`w-full h-14 text-lg font-medium text-white ${
-                  productType === "warranty"
-                    ? "bg-gradient-to-r from-neon-purple to-purple-600 hover:from-purple-600 hover:to-neon-purple"
-                    : "bg-gradient-to-r from-neon-green to-neon-blue hover:from-neon-blue hover:to-neon-green"
-                }`}
+                className={`w-full h-14 text-lg font-medium text-white ${productType === "warranty"
+                  ? "bg-gradient-to-r from-neon-purple to-purple-600 hover:from-purple-600 hover:to-neon-purple"
+                  : "bg-gradient-to-r from-neon-green to-neon-blue hover:from-neon-blue hover:to-neon-green"
+                  }`}
               >
                 {isProcessingSale ? (
                   "Processando..."
@@ -4899,8 +4922,8 @@ const SalesDashboard = ({
                                 );
                                 const unitPrice = unitPriceMatch
                                   ? parseFloat(
-                                      unitPriceMatch[1].replace(",", ".")
-                                    )
+                                    unitPriceMatch[1].replace(",", ".")
+                                  )
                                   : 0;
 
                                 // Extrair medidas do produto (ex: 175/65 R14)
@@ -4930,8 +4953,8 @@ const SalesDashboard = ({
                                           {productDetails.includes(
                                             "TIPO_PRODUTO: materia_prima"
                                           ) && (
-                                            <Boxes className="h-4 w-4 text-neon-orange inline" />
-                                          )}
+                                              <Boxes className="h-4 w-4 text-neon-orange inline" />
+                                            )}
                                           {productName || measures || "Produto"}
                                         </div>
                                         <div className="text-tire-400 text-xs">
@@ -5521,8 +5544,8 @@ const SalesDashboard = ({
                                 );
                                 const unitPrice = unitPriceMatch
                                   ? parseFloat(
-                                      unitPriceMatch[1].replace(",", ".")
-                                    )
+                                    unitPriceMatch[1].replace(",", ".")
+                                  )
                                   : 0;
 
                                 return (
@@ -5547,8 +5570,8 @@ const SalesDashboard = ({
                                             productDetails.includes(
                                               "TIPO_PRODUTO: revenda"
                                             )) && (
-                                            <Boxes className="h-4 w-4 text-neon-orange inline" />
-                                          )}
+                                              <Boxes className="h-4 w-4 text-neon-orange inline" />
+                                            )}
                                           {productName || "Produto de Revenda"}
                                         </div>
                                         <div className="text-tire-300 text-sm font-medium">
