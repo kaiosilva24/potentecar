@@ -1012,12 +1012,22 @@ const SalesDashboard = ({
       );
     }
 
+    // In raw material mode, selectedProduct is a raw material stock item id
+    const rawMaterialSelected =
+      productType === "resale" && isRawMaterialMode
+        ? availableRawMaterials.find((m) => m.id === selectedProduct) || null
+        : null;
+
     const customer = activeCustomers.find((c) => c.id === selectedCustomer);
     const salesperson = activeSalespeople.find(
       (s) => s.id === selectedSalesperson
     );
 
-    if ((!product && !resaleProduct) || !customer || !salesperson) {
+    if (
+      (!product && !resaleProduct && !rawMaterialSelected) ||
+      !customer ||
+      !salesperson
+    ) {
       alert("Erro: Dados não encontrados.");
       return;
     }
@@ -1030,7 +1040,17 @@ const SalesDashboard = ({
         );
         return;
       }
-    } else if (productType === "resale") {
+    } else if (productType === "resale" && isRawMaterialMode) {
+      // Raw material sale: check raw material stock
+      const availableStock = rawMaterialSelected?.quantity || 0;
+
+      if (parseFloat(quantity) > availableStock) {
+        alert(
+          `Estoque insuficiente. Disponível: ${availableStock.toFixed(2)} ${rawMaterialSelected?.unit || ""}`
+        );
+        return;
+      }
+    } else if (productType === "resale" && resaleProduct) {
       // Get stock quantity from stock_items table for resale products
       const stockItem = stockItems.find(
         (item) =>
@@ -1421,11 +1441,23 @@ const SalesDashboard = ({
         resetFormForContinuousSales();
 
         const productName =
-          productType === "final" ? product?.item_name : resaleProduct?.name;
+          productType === "final"
+            ? product?.item_name
+            : rawMaterialSelected
+              ? rawMaterialSelected.item_name
+              : resaleProduct?.name;
         const productUnit =
-          productType === "final" ? product?.unit : resaleProduct?.unit;
+          productType === "final"
+            ? product?.unit
+            : rawMaterialSelected
+              ? rawMaterialSelected.unit
+              : resaleProduct?.unit;
         const productTypeLabel =
-          productType === "final" ? "Produto Final" : "Produto de Revenda";
+          productType === "final"
+            ? "Produto Final"
+            : rawMaterialSelected
+              ? "Matéria-Prima"
+              : "Produto de Revenda";
 
         alert(
           `Venda registrada com sucesso!\n\n` +
@@ -2294,7 +2326,9 @@ const SalesDashboard = ({
 
         // Determine message based on product type
         let successMessage = `Venda excluída com sucesso!\n\n`;
-        if (isRawMaterial) {
+        if (!stockRestored) {
+          successMessage += `⚠️ Atenção: o estoque NÃO foi alterado automaticamente (item não encontrado no estoque). Ajuste a quantidade manualmente se necessário.`;
+        } else if (isRawMaterial) {
           successMessage += `📦 A matéria-prima foi devolvida ao estoque automaticamente.`;
         } else if (isResaleProduct) {
           successMessage += `📦 O produto de revenda foi devolvido ao estoque automaticamente.`;
