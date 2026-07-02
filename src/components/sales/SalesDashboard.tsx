@@ -2816,7 +2816,12 @@ const SalesDashboard = ({
         const newSelectedProduct = {
           id: Date.now().toString(),
           name: productName,
-          type: productType,
+          // No modo matéria-prima o productType continua "resale"; marca como "material"
+          // para que o estoque de matéria-prima seja descontado/devolvido corretamente
+          type:
+            productType === "resale" && isRawMaterialMode
+              ? "material"
+              : productType,
           quantity: 0, // Será preenchido quando o usuário digitar
           unitPrice: 0, // Será preenchido quando o usuário digitar
           totalPrice: 0,
