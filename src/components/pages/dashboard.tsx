@@ -19,7 +19,10 @@ import ProductionChart from "../stock/ProductionChart";
 import potentCarLogo from "../../assets/potente-car.png";
 
 import { useDataPersistence, useDebts } from "../../hooks/useDataPersistence";
-import { computeFinancialMetrics } from "../../utils/financialMetrics";
+import {
+  computeFinancialMetrics,
+  computeProfitSeries,
+} from "../../utils/financialMetrics";
 import { supabase } from "../../../supabase/supabase";
 import { initializeDefaultTireCosts } from "../../utils/defaultTireCosts";
 import "../../utils/testTireCostFix"; // Importar função de teste global
@@ -85,16 +88,44 @@ interface EmpresarialProfitChartProps {
   cashFlowEntries: any[];
   isLoading: boolean;
   empresarialValue: number | null;
+  stockItems?: any[];
+  resaleProducts?: any[];
 }
 
 const EmpresarialProfitChart = ({
   cashFlowEntries,
   isLoading,
   empresarialValue,
+  stockItems = [],
+  resaleProducts = [],
 }: EmpresarialProfitChartProps) => {
   const [dateFilter, setDateFilter] = useState("30"); // Mensal (30 dias) por padrão
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
+
+  // ✅ LUCRO REALIZADO (Receita − COGS − Despesas) — série diária do banco.
+  // Substitui o antigo mecanismo de "baseline" (que nunca era confirmado).
+  const realizedDays =
+    dateFilter === "custom" ? 30 : parseInt(dateFilter) || 30;
+  const realizedSeries = useMemo(
+    () =>
+      computeProfitSeries(
+        {
+          stockItems: stockItems as any,
+          cashFlowEntries: cashFlowEntries as any,
+          resaleProducts: resaleProducts as any,
+        },
+        realizedDays
+      ),
+    [stockItems, cashFlowEntries, resaleProducts, realizedDays]
+  );
+  const realizedPeriodProfit = realizedSeries.length
+    ? realizedSeries[realizedSeries.length - 1].accumulatedProfit
+    : 0;
+  const realizedPeriodReceita = realizedSeries.reduce(
+    (a, p) => a + p.receita,
+    0
+  );
 
   // Estados para lucro empresarial
   const [businessProfit, setBusinessProfit] = useState<number>(0);
@@ -276,34 +307,27 @@ const EmpresarialProfitChart = ({
         <div className="bg-factory-800/95 border border-tire-600/50 rounded-lg p-3 shadow-lg">
           <p className="text-white font-medium">{data.displayDate}</p>
           <p className="text-tire-300">
-            Valor Empresarial:{" "}
+            Receita:{" "}
             {new Intl.NumberFormat("pt-BR", {
               style: "currency",
               currency: "BRL",
-            }).format(data.businessValue)}
-          </p>
-          <p className="text-tire-400">
-            Baseline:{" "}
-            {new Intl.NumberFormat("pt-BR", {
-              style: "currency",
-              currency: "BRL",
-            }).format(data.baseline)}
+            }).format(data.receita || 0)}
           </p>
           <p
             className={`font-bold ${data.profit >= 0 ? "text-neon-green" : "text-red-400"}`}
           >
-            Lucro Empresarial:{" "}
+            Lucro do dia:{" "}
             {new Intl.NumberFormat("pt-BR", {
               style: "currency",
               currency: "BRL",
-            }).format(data.profit)}
+            }).format(data.profit || 0)}
           </p>
           <p className="text-neon-blue">
             Acumulado:{" "}
             {new Intl.NumberFormat("pt-BR", {
               style: "currency",
               currency: "BRL",
-            }).format(data.accumulatedProfit)}
+            }).format(data.accumulatedProfit || 0)}
           </p>
         </div>
       );
@@ -376,7 +400,7 @@ const EmpresarialProfitChart = ({
               <div className="flex items-center justify-center h-full">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-neon-purple"></div>
               </div>
-            ) : chartData.length === 0 ? (
+            ) : realizedSeries.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">
                   <TrendingUp className="h-12 w-12 text-tire-500 mx-auto mb-3" />
@@ -393,7 +417,7 @@ const EmpresarialProfitChart = ({
                 minHeight={260}
               >
                 <LineChart
-                  data={chartData}
+                  data={realizedSeries}
                   margin={{
                     top: 20,
                     right: 30,
@@ -463,9 +487,9 @@ const EmpresarialProfitChart = ({
                       </p>
                       <p
                         className={`text-4xl font-bold ${
-                          businessProfit > 0
+                          realizedPeriodProfit > 0
                             ? "text-neon-green"
-                            : businessProfit < 0
+                            : realizedPeriodProfit < 0
                               ? "text-red-400"
                               : "text-tire-200"
                         }`}
@@ -473,28 +497,26 @@ const EmpresarialProfitChart = ({
                         {new Intl.NumberFormat("pt-BR", {
                           style: "currency",
                           currency: "BRL",
-                        }).format(businessProfit)}
+                        }).format(realizedPeriodProfit)}
                       </p>
                       <p className="text-tire-400 text-xs">
-                        {businessBaseline !== null
-                          ? "Diferença do baseline ativo"
-                          : "Aguardando confirmação do balanço"}
+                        Lucro realizado no período (Receita − Custo − Despesas)
                       </p>
                     </div>
                     <div
                       className={`p-3 rounded-full ${
-                        businessProfit > 0
+                        realizedPeriodProfit > 0
                           ? "bg-neon-green/20"
-                          : businessProfit < 0
+                          : realizedPeriodProfit < 0
                             ? "bg-red-500/20"
                             : "bg-tire-500/20"
                       }`}
                     >
                       <TrendingUp
                         className={`h-6 w-6 ${
-                          businessProfit > 0
+                          realizedPeriodProfit > 0
                             ? "text-neon-green"
-                            : businessProfit < 0
+                            : realizedPeriodProfit < 0
                               ? "text-red-400"
                               : "text-tire-400"
                         }`}
@@ -502,32 +524,24 @@ const EmpresarialProfitChart = ({
                     </div>
                   </div>
 
-                  {/* Informações do baseline */}
+                  {/* Receita do período */}
                   <div className="border-t border-tire-600/30 pt-4">
                     <div className="flex items-center justify-between mb-3">
                       <div className="text-xs text-tire-400">
-                        <p>Status do Balanço:</p>
-                        <p
-                          className={`font-medium ${
-                            businessBaseline !== null
-                              ? "text-neon-green"
-                              : "text-yellow-400"
-                          }`}
-                        >
-                          {businessBaseline !== null
-                            ? "✅ Confirmado"
-                            : "⏳ Não Confirmado"}
+                        <p>Receita no período:</p>
+                        <p className="font-medium text-tire-200">
+                          {new Intl.NumberFormat("pt-BR", {
+                            style: "currency",
+                            currency: "BRL",
+                          }).format(realizedPeriodReceita)}
                         </p>
                       </div>
                       <div className="text-xs text-tire-400 text-right">
-                        <p>Baseline:</p>
-                        <p className="font-medium text-tire-200">
-                          {businessBaseline !== null
-                            ? new Intl.NumberFormat("pt-BR", {
-                                style: "currency",
-                                currency: "BRL",
-                              }).format(businessBaseline)
-                            : "Não definido"}
+                        <p>Margem:</p>
+                        <p className="font-medium text-neon-green">
+                          {realizedPeriodReceita > 0
+                            ? `${((realizedPeriodProfit / realizedPeriodReceita) * 100).toFixed(1)}%`
+                            : "—"}
                         </p>
                       </div>
                     </div>
@@ -3190,6 +3204,8 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
         cashFlowEntries={cashFlowEntries}
         isLoading={cashFlowLoading}
         empresarialValue={empresarialValue}
+        stockItems={stockItems}
+        resaleProducts={resaleProducts}
       />
 
       {/* Seção de Cards de Métricas - Layout 3x3 */}

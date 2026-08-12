@@ -4938,6 +4938,20 @@ const SalesDashboard = ({
                                   </span>
                                 </div>
                               </div>
+                              <div className="text-tire-300 text-xs mt-2">
+                                📦{" "}
+                                {sales
+                                  .map((s) => {
+                                    const nm = (s.description || "").match(
+                                      /Produto:\s*([^|]+)/
+                                    );
+                                    const qt = (s.description || "").match(
+                                      /Qtd:\s*([0-9.]+)/
+                                    );
+                                    return `${nm ? nm[1].trim() : "Produto"}${qt ? ` (${qt[1]})` : ""}`;
+                                  })
+                                  .join("   •   ")}
+                              </div>
                             </div>
                             <div className="flex items-center gap-2">
                               <Button

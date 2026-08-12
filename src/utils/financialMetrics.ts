@@ -76,6 +76,84 @@ const num = (v: any): number => {
   return isFinite(n) ? n : 0;
 };
 
+export interface ProfitPoint {
+  date: string; // YYYY-MM-DD
+  displayDate: string; // dd/mm
+  profit: number; // lucro realizado no dia (Receita − COGS − Despesas oper.)
+  receita: number;
+  accumulatedProfit: number; // acumulado no período
+}
+
+/**
+ * Série diária de LUCRO REALIZADO para os últimos `days` dias.
+ * profit_dia = Σ(receita venda) − Σ(COGS) − Σ(despesas operacionais), tudo do banco.
+ */
+export function computeProfitSeries(
+  input: {
+    stockItems: StockItemLike[];
+    cashFlowEntries: CashFlowEntryLike[];
+    resaleProducts?: ResaleProductLike[];
+  },
+  days: number
+): ProfitPoint[] {
+  const stockItems = input.stockItems || [];
+  const cashFlow = input.cashFlowEntries || [];
+  const stockById = new Map(stockItems.map((s) => [s.id, s]));
+  const productByItemId = new Map<string, StockItemLike>();
+  for (const s of stockItems) {
+    if (s.item_type === "product") productByItemId.set(s.item_id, s);
+  }
+
+  const cogsOf = (desc: string): number => {
+    const tipo = (desc.match(/TIPO_PRODUTO:\s*(\w+)/) || [])[1];
+    const qty = num((desc.match(/Qtd:\s*([0-9.]+)/) || [])[1]);
+    const id = (desc.match(/ID_Produto:\s*([^|\s]+)/) || [])[1];
+    if (!id || !qty) return 0;
+    const row = tipo === "revenda" ? productByItemId.get(id) : stockById.get(id);
+    return row ? num(row.unit_cost) * qty : 0;
+  };
+
+  const byDay: Record<
+    string,
+    { receita: number; cogs: number; opex: number }
+  > = {};
+  for (const e of cashFlow) {
+    const d = (e.transaction_date || "").slice(0, 10);
+    if (!d) continue;
+    if (!byDay[d]) byDay[d] = { receita: 0, cogs: 0, opex: 0 };
+    const amt = num(e.amount);
+    if (e.type === "income" && e.category === "venda") {
+      byDay[d].receita += amt;
+      byDay[d].cogs += cogsOf(e.description || "");
+    } else if (
+      e.type === "expense" &&
+      !SUPPLIER_CATEGORIES.includes(e.category || "")
+    ) {
+      byDay[d].opex += amt;
+    }
+  }
+
+  const points: ProfitPoint[] = [];
+  const today = new Date();
+  let acc = 0;
+  for (let i = days - 1; i >= 0; i--) {
+    const dt = new Date(today);
+    dt.setDate(today.getDate() - i);
+    const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+    const dd = byDay[iso] || { receita: 0, cogs: 0, opex: 0 };
+    const profit = dd.receita - dd.cogs - dd.opex;
+    acc += profit;
+    points.push({
+      date: iso,
+      displayDate: `${String(dt.getDate()).padStart(2, "0")}/${String(dt.getMonth() + 1).padStart(2, "0")}`,
+      profit,
+      receita: dd.receita,
+      accumulatedProfit: acc,
+    });
+  }
+  return points;
+}
+
 // Categorias de DESPESA que compõem o resultado operacional (fornecedor = compra
 // de matéria-prima e NÃO entra aqui — vira estoque/COGS).
 const OPERATING_EXPENSE_CATEGORIES = [
