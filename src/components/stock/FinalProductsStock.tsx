@@ -350,7 +350,11 @@ const FinalProductsStock: React.FC<FinalProductsStockProps> = ({
         const product = products.find((p) => p.id === stockItem.item_id);
         if (!product) return null;
 
-        const costPerTire = getSpecificCost(product.name);
+        // Custo REAL do banco (consistente com o painel/estoque); localStorage só como fallback
+        const costPerTire =
+          stockItem.unit_cost && stockItem.unit_cost > 0
+            ? stockItem.unit_cost
+            : getSpecificCost(product.name);
         const measures = extractMeasures(product.name);
         const quantity = stockItem.quantity || 0;
         const totalValue = quantity * costPerTire;

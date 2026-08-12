@@ -143,18 +143,33 @@ export class DataManager {
 
   async loadFromDatabase<T>(tableName: string): Promise<T[]> {
     try {
-      const { data, error } = await this.supabase
-        .from(tableName)
-        .select("*")
-        .order("created_at", { ascending: false });
+      // Paginação: o Supabase limita cada select a 1000 linhas. Sem isso, tabelas
+      // grandes (cash_flow_entries, production_entries) vinham truncadas e TODAS as
+      // métricas de caixa/lucro eram calculadas sobre dados parciais.
+      const pageSize = 1000;
+      let from = 0;
+      let all: any[] = [];
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { data, error } = await this.supabase
+          .from(tableName)
+          .select("*")
+          .order("created_at", { ascending: false })
+          .range(from, from + pageSize - 1);
 
-      if (error) throw error;
+        if (error) throw error;
+
+        const batch = data || [];
+        all = all.concat(batch);
+        if (batch.length < pageSize) break;
+        from += pageSize;
+      }
 
       console.log(
         `✅ [DataManager] Dados carregados de ${tableName}:`,
-        data?.length || 0
+        all.length
       );
-      return data || [];
+      return all as T[];
     } catch (error) {
       console.error(
         `❌ [DataManager] Erro ao carregar de ${tableName}:`,
@@ -4014,11 +4029,11 @@ export class DataManager {
 
       if (error) {
         console.warn(
-          "⚠️ [DataManager] Erro ao carregar lucro empresarial, usando valor padrão:",
+          "⚠️ [DataManager] Lucro empresarial não encontrado, retornando 0:",
           error
         );
-        // Por enquanto, usar o mesmo valor do business_value como fallback
-        return await this.loadBusinessValue();
+        // Sem registro salvo o lucro é 0 — NUNCA usar o patrimônio como lucro
+        return 0;
       }
 
       const profit = parseFloat(data.value) || 0;
@@ -4029,8 +4044,7 @@ export class DataManager {
         "❌ [DataManager] Erro crítico ao carregar lucro empresarial:",
         error
       );
-      // Fallback para o valor empresarial
-      return await this.loadBusinessValue();
+      return 0;
     }
   }
 

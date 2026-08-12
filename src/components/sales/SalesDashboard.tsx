@@ -1801,13 +1801,15 @@ const SalesDashboard = ({
       if (originalProductInfo) {
         const { productId, quantity: originalQuantity } = originalProductInfo;
 
-        // Find the product in stock
-        const stockItem = stockItems.find((item) => item.id === productId);
+        // Find the product in stock. Final/matéria-prima gravam o id da linha de
+        // estoque em ID_Produto; revenda grava o id do produto (item_id).
+        const stockItem = stockItems.find(
+          (item) =>
+            item.id === productId ||
+            (item.item_id === productId && item.item_type === "product")
+        );
 
         if (stockItem) {
-          // Calculate the difference in quantity
-          const quantityDifference = newQuantity - originalQuantity;
-
           // Update stock: restore original quantity, then deduct new quantity
           const newStockQuantity =
             stockItem.quantity + originalQuantity - newQuantity;
@@ -1819,17 +1821,30 @@ const SalesDashboard = ({
             return;
           }
 
-          // Update stock quantity
-          await updateStockItem(productId, {
+          // Update stock quantity (usar o id da LINHA de estoque, não o ID_Produto)
+          await updateStockItem(stockItem.id, {
             quantity: newStockQuantity,
+            total_value: newStockQuantity * stockItem.unit_cost,
+            last_updated: new Date().toISOString(),
           });
         }
       }
 
+      // Vendas A PRAZO pendentes não podem ser realizadas no caixa ao editar
+      // (o valor só entra no recebimento). Mantém amount 0 e atualiza Valor_Original.
+      const isPending =
+        editingSale.category === "venda_prazo" &&
+        (editingSale.description || "").includes("Status: PENDENTE");
+
+      const productLabel =
+        editingSale.reference_name
+          ?.replace("[PENDENTE] ", "")
+          .split(" - ")[1] || "Produto";
+
       // Update the cash flow entry
       await updateCashFlowEntry(editingSale.id, {
-        amount: newTotalValue,
-        reference_name: `Venda para ${editSaleData.customer} - ${editingSale.reference_name.split(" - ")[1] || "Produto"}`,
+        amount: isPending ? 0 : newTotalValue,
+        reference_name: `${isPending ? "[PENDENTE] " : ""}Venda para ${editSaleData.customer} - ${productLabel}`,
         description: editingSale.description
           ?.replace(/Qtd:\s*[0-9.]+/, `Qtd: ${newQuantity}`)
           ?.replace(
@@ -1840,7 +1855,8 @@ const SalesDashboard = ({
             /Vendedor:\s*[^|]+/,
             `Vendedor: ${editSaleData.salesperson}`
           )
-          ?.replace(/Método:\s*[^|]+/, `Método: ${editSaleData.paymentMethod}`),
+          ?.replace(/Método:\s*[^|]+/, `Método: ${editSaleData.paymentMethod}`)
+          ?.replace(/Valor_Original:\s*[0-9.]+/, `Valor_Original: ${newTotalValue}`),
       });
 
       alert("Venda editada com sucesso!");

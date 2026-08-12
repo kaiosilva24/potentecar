@@ -1623,27 +1623,18 @@ const PresumedProfitManager = ({
 
       if (summaryMetrics.totalProfit >= 0) {
         try {
-          // Salvar o lucro total como valor empresarial no banco de dados
-          const businessValueSuccess = await dataManager.saveBusinessValue(
-            summaryMetrics.totalProfit
+          // IMPORTANTE: NÃO sobrescrever business_value / business_profit.
+          // business_value = patrimônio (Valor Empresarial), escrito só pelo dashboard.
+          // business_profit = lucro realizado. O lucro PRESUMIDO tem chave própria
+          // para não colidir/embaralhar significados entre telas.
+          const presumedSuccess = await dataManager.saveSystemSetting(
+            "presumed_profit_total",
+            summaryMetrics.totalProfit.toString()
           );
 
-          // Salvar também como lucro empresarial separadamente
-          const businessProfitSuccess = await dataManager.saveBusinessProfit(
-            summaryMetrics.totalProfit
-          );
-
-          if (businessValueSuccess && businessProfitSuccess) {
+          if (presumedSuccess) {
             console.log(
-              `✅ [PresumedProfitManager] Valor Empresarial e Lucro Empresarial salvos com sucesso: R$ ${summaryMetrics.totalProfit.toFixed(2)}`
-            );
-          } else {
-            console.warn(
-              "⚠️ [PresumedProfitManager] Falha ao salvar alguns valores:",
-              {
-                businessValue: businessValueSuccess,
-                businessProfit: businessProfitSuccess,
-              }
+              `✅ [PresumedProfitManager] Lucro presumido salvo (presumed_profit_total): R$ ${summaryMetrics.totalProfit.toFixed(2)}`
             );
           }
         } catch (error) {

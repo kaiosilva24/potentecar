@@ -1222,75 +1222,13 @@ const StockDashboard = ({
       finalProductStockItems
     );
 
-    // Cálculo dinâmico em tempo real para produtos finais - USAR CUSTOS ESPECÍFICOS POR PRODUTO
+    // Valor dos produtos finais a CUSTO REAL do banco (unit_cost gravado no estoque),
+    // consistente com o painel principal (financialMetrics). Sem localStorage.
     const finalProductTotalValue = finalProductStockItems.reduce(
-      (sum, item, index) => {
+      (sum, item) => {
         const quantity = Number(item.quantity) || 0;
-
-        // BUSCAR CUSTO ESPECÍFICO para cada produto (igual ao FinalProductsStock)
-        let unitCost = 0;
-        let costSource = "FALLBACK ESTOQUE";
-
-        // Buscar custo específico no localStorage (EXATO método do FinalProductsStock)
-        const productKey = `tireAnalysis_${item.item_name.toLowerCase().replace(/\s+/g, "_")}`;
-        const specificCostData = localStorage.getItem(productKey);
-
-        console.log(
-          `🔍 [${index + 1}/${finalProductStockItems.length}] Buscando custo para "${item.item_name}" com chave: ${productKey}`
-        );
-
-        if (specificCostData) {
-          try {
-            const parsedData = JSON.parse(specificCostData);
-            console.log(
-              `📊 Dados encontrados para ${item.item_name}:`,
-              parsedData
-            );
-
-            // USAR MESMA PROPRIEDADE QUE O FinalProductsStock: costPerTire
-            if (parsedData && parsedData.costPerTire > 0) {
-              unitCost = parsedData.costPerTire;
-              costSource = "CUSTO ESPECÍFICO";
-              console.log(
-                `✨ [${index + 1}/${finalProductStockItems.length}] ${item.item_name} - ${costSource}:`
-              );
-            } else {
-              console.log(
-                `⚠️ Dados encontrados mas costPerTire inválido:`,
-                parsedData.costPerTire
-              );
-            }
-          } catch (error) {
-            console.warn(
-              `⚠️ Erro ao buscar custo específico para ${item.item_name}:`,
-              error
-            );
-          }
-        } else {
-          console.log(
-            `❌ Não encontrado custo específico para ${item.item_name} (chave: ${productKey})`
-          );
-        }
-
-        // Fallbacks se não encontrou custo específico
-        if (unitCost === 0) {
-          if (
-            synchronizedCostData &&
-            synchronizedCostData.averageCostPerTire > 0
-          ) {
-            unitCost = synchronizedCostData.averageCostPerTire;
-            costSource = "CUSTO MÉDIO SINCRONIZADO";
-          } else if (averageCostPerTire > 0) {
-            unitCost = averageCostPerTire;
-            costSource = "CUSTO MÉDIO LOCAL";
-          } else {
-            unitCost = Number(item.unit_cost) || 0;
-            costSource = "FALLBACK ESTOQUE";
-          }
-          console.log(
-            `🔄 [${index + 1}/${finalProductStockItems.length}] ${item.item_name} - ${costSource}:`
-          );
-        }
+        const unitCost = Number(item.unit_cost) || 0;
+        const costSource = "ESTOQUE (banco)";
 
         const calculatedValue = unitCost * quantity;
 

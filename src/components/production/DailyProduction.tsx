@@ -41,7 +41,6 @@ import {
   StockItem,
 } from "@/types/financial";
 import ProductionChart from "@/components/stock/ProductionChart";
-import ProductionProfitManager from "@/utils/productionProfitManager";
 
 interface DailyProductionProps {
   recipes?: ProductionRecipe[];
@@ -518,6 +517,27 @@ const DailyProduction = ({
           note: "Quantidade total será adicionada ao estoque (incluindo perdas)",
         });
 
+        // Custo real da matéria-prima consumida nesta produção (inclui perdas).
+        // Ao valorizar o pneu produzido por esse custo/unidade, o valor que SAI do
+        // estoque de matéria-prima ENTRA no estoque de produto — conservando o valor
+        // total do estoque em vez de "sumir" (pneu ficava com custo 0).
+        const totalMaterialCostConsumed = (
+          pendingProduction.consolidatedMaterialSummary || []
+        ).reduce((sum, m) => {
+          const stockMat = stockItems.find(
+            (it) => it.item_id === m.material_id && it.item_type === "material"
+          );
+          return sum + m.total_deduction * (stockMat?.unit_cost || 0);
+        }, 0);
+        const unitProducedCost =
+          totalProduction > 0 ? totalMaterialCostConsumed / totalProduction : 0;
+
+        console.log("💰 [DailyProduction] Custo real do pneu produzido:", {
+          totalMaterialCostConsumed,
+          totalProduction,
+          unitProducedCost,
+        });
+
         // Add the TOTAL production quantity to the product stock - await this operation
         try {
           await onStockUpdate(
@@ -525,7 +545,7 @@ const DailyProduction = ({
             "product",
             totalProduction, // Changed from effectiveProduction to totalProduction
             "add",
-            0, // No cost for produced items initially
+            unitProducedCost, // custo real de matéria-prima por pneu (conserva o valor do estoque)
             recipe.product_name // pass the product name
           );
           console.log(
@@ -550,40 +570,9 @@ const DailyProduction = ({
         "🎉 [DailyProduction] PRODUÇÃO REGISTRADA COM SUCESSO COMPLETO!"
       );
 
-      // Wait a moment to ensure database operations are complete
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      console.log("🔄 [DailyProduction] Aguardando sincronização completa...");
-
-      // NOVA FUNCIONALIDADE: Adicionar lucro da produção ao baseline do lucro empresarial
-      console.log(
-        "💰 [DailyProduction] Processando lucro da produção para baseline..."
-      );
-      try {
-        const profitAdded =
-          await ProductionProfitManager.addProductionProfitToBaseline(
-            recipe.product_name,
-            quantity,
-            materialsToConsume,
-            stockItems
-          );
-
-        if (profitAdded) {
-          console.log(
-            "✅ [DailyProduction] Lucro da produção processado com sucesso!"
-          );
-        } else {
-          console.log(
-            "⚠️ [DailyProduction] Lucro da produção não foi adicionado ao baseline"
-          );
-        }
-      } catch (profitError) {
-        console.error(
-          "❌ [DailyProduction] Erro ao processar lucro da produção:",
-          profitError
-        );
-        // Não interrompe o fluxo, apenas registra o erro
-      }
+      // O pneu produzido já entra no estoque com o custo real da matéria-prima
+      // (conserva o valor). O "Lucro Empresarial" agora é REALIZADO (Receita − COGS),
+      // então NÃO mexemos mais no "baseline" auto-cancelante ao produzir.
 
       // Reset form
       setSelectedRecipe("");
@@ -692,35 +681,8 @@ const DailyProduction = ({
         );
         await onDelete(entry.id);
 
-        // NOVA FUNCIONALIDADE: Remover lucro da produção do baseline do lucro empresarial
-        console.log(
-          "💰 [DailyProduction] Removendo lucro da produção do baseline..."
-        );
-        try {
-          const profitRemoved =
-            await ProductionProfitManager.removeProductionProfitFromBaseline(
-              entry.product_name,
-              entry.quantity_produced,
-              entry.materials_consumed,
-              stockItems
-            );
-
-          if (profitRemoved) {
-            console.log(
-              "✅ [DailyProduction] Lucro da produção removido do baseline com sucesso!"
-            );
-          } else {
-            console.log(
-              "⚠️ [DailyProduction] Lucro da produção não foi removido do baseline"
-            );
-          }
-        } catch (profitError) {
-          console.error(
-            "❌ [DailyProduction] Erro ao remover lucro da produção do baseline:",
-            profitError
-          );
-          // Não interrompe o fluxo, apenas registra o erro
-        }
+        // Baseline aposentado: o lucro é realizado (Receita − COGS), não se mexe
+        // no baseline ao excluir produção.
 
         console.log("✅ [DailyProduction] Produção deletada com sucesso!");
       } catch (error) {

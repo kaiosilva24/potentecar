@@ -19,6 +19,7 @@ import ProductionChart from "../stock/ProductionChart";
 import potentCarLogo from "../../assets/potente-car.png";
 
 import { useDataPersistence, useDebts } from "../../hooks/useDataPersistence";
+import { computeFinancialMetrics } from "../../utils/financialMetrics";
 import { supabase } from "../../../supabase/supabase";
 import { initializeDefaultTireCosts } from "../../utils/defaultTireCosts";
 import "../../utils/testTireCostFix"; // Importar função de teste global
@@ -570,6 +571,19 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
   const { resaleProducts, isLoading: resaleProductsLoading } =
     useResaleProducts();
   const { stockItems, isLoading: stockItemsLoading } = useStockItems();
+
+  // ✅ FONTE ÚNICA DE VERDADE das métricas financeiras (custo e lucro),
+  // derivada 100% do banco (sem localStorage). Ver src/utils/financialMetrics.ts
+  const fin = useMemo(
+    () =>
+      computeFinancialMetrics({
+        stockItems: stockItems as any,
+        cashFlowEntries: cashFlowEntries as any,
+        resaleProducts: resaleProducts as any,
+        debts: debts as any,
+      }),
+    [stockItems, cashFlowEntries, resaleProducts, debts]
+  );
 
   // FASE 3: Dados menos críticos (carregamento diferido)
   const [loadTertiaryData, setLoadTertiaryData] = useState(false);
@@ -3061,7 +3075,7 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
                     {isLoadingCashBalance || cashBalanceState === null ? (
                       <span className="animate-pulse">Carregando...</span>
                     ) : (
-                      formatCurrency(cashBalanceState)
+                      formatCurrency(fin.saldoCaixa)
                     )}
                   </p>
                 </div>
@@ -3102,7 +3116,7 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
                     {isLoadingEmpresarialValue || empresarialValue === null ? (
                       <span className="animate-pulse">Carregando...</span>
                     ) : (
-                      formatCurrency(empresarialValue)
+                      formatCurrency(fin.valorEmpresarial)
                     )}
                   </p>
                 </div>
@@ -3111,6 +3125,65 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
           </Card>
         </div>
       </div>
+
+      {/* Resultado Financeiro (DRE) — Lucro Realizado = Receita − COGS − Despesas */}
+      <Card className="bg-factory-900/30 border-tire-600/30">
+        <CardContent className="p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <TrendingUp className="h-5 w-5 text-green-400" />
+            <h3 className="text-lg font-bold text-tire-100">
+              Resultado Financeiro (Realizado)
+            </h3>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            <div className="p-3 rounded-lg bg-factory-800/50 border border-tire-600/20">
+              <p className="text-tire-400 text-xs">Receita de Vendas</p>
+              <p className="text-lg font-bold text-tire-100">
+                {formatCurrency(fin.receitaVendas)}
+              </p>
+            </div>
+            <div className="p-3 rounded-lg bg-factory-800/50 border border-tire-600/20">
+              <p className="text-tire-400 text-xs">(−) Custo dos Vendidos</p>
+              <p className="text-lg font-bold text-red-300">
+                {formatCurrency(-fin.cogs)}
+              </p>
+            </div>
+            <div className="p-3 rounded-lg bg-factory-800/50 border border-green-600/20">
+              <p className="text-tire-400 text-xs">(=) Lucro Bruto</p>
+              <p className="text-lg font-bold text-green-300">
+                {formatCurrency(fin.lucroBruto)}
+              </p>
+              <p className="text-tire-500 text-xs">
+                {fin.margemBruta.toFixed(1)}% margem
+              </p>
+            </div>
+            <div className="p-3 rounded-lg bg-factory-800/50 border border-tire-600/20">
+              <p className="text-tire-400 text-xs">(−) Despesas Operacionais</p>
+              <p className="text-lg font-bold text-red-300">
+                {formatCurrency(-fin.despesasOperacionais)}
+              </p>
+            </div>
+            <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/40">
+              <p className="text-tire-300 text-xs font-medium">
+                (=) Lucro Líquido
+              </p>
+              <p className="text-xl font-bold text-green-400">
+                {formatCurrency(fin.lucroLiquido)}
+              </p>
+              <p className="text-green-500/80 text-xs">
+                {fin.margemLiquida.toFixed(1)}% margem
+              </p>
+            </div>
+          </div>
+          <p className="text-tire-500 text-xs mt-3">
+            Compras de matéria-prima (fornecedores) não entram aqui — viram
+            estoque e só contam como custo quando o produto é vendido.
+            {fin.vendasSemCusto > 0
+              ? ` • ${fin.vendasSemCusto} venda(s) sem custo mapeado.`
+              : ""}
+          </p>
+        </CardContent>
+      </Card>
 
       {/* Gráfico de Lucro Empresarial */}
       <EmpresarialProfitChart
@@ -3135,7 +3208,7 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
                   rawMaterialStockBalance === null ? (
                     <span className="animate-pulse">Carregando...</span>
                   ) : (
-                    formatCurrency(rawMaterialStockBalance)
+                    formatCurrency(fin.saldoMateriaPrima)
                   )}
                 </p>
               </div>
@@ -3159,7 +3232,7 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
                   finalProductStockBalance === null ? (
                     <span className="animate-pulse">Carregando...</span>
                   ) : (
-                    formatCurrency(finalProductStockBalance)
+                    formatCurrency(fin.saldoProdutosFinais)
                   )}
                 </p>
               </div>
@@ -3183,7 +3256,7 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
                   resaleProductStockBalance === null ? (
                     <span className="animate-pulse">Carregando...</span>
                   ) : (
-                    formatCurrency(resaleProductStockBalance)
+                    formatCurrency(fin.saldoProdutosRevenda)
                   )}
                 </p>
               </div>
@@ -3204,7 +3277,7 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
                   Custo Médio por Pneu
                 </p>
                 <p className="text-2xl font-bold text-tire-200">
-                  {formatCurrency(averageTireCost)}
+                  {formatCurrency(fin.custoMedioPorPneu)}
                 </p>
               </div>
               <div className="p-2 rounded-full bg-blue-500/20">
@@ -3226,7 +3299,7 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
                   {isLoadingTireProfit ? (
                     <span className="animate-pulse">Carregando...</span>
                   ) : (
-                    formatCurrency(averageTireProfit)
+                    formatCurrency(fin.lucroMedioPorPneu)
                   )}
                 </p>
               </div>
@@ -3531,7 +3604,8 @@ const Home = () => {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [activeSection, setActiveSection] = useState("dashboard");
-  const { stockItems, updateStockItem, loadStockItems } = useStockItems(); // ✅ Usando Supabase em vez de localStorage
+  const { stockItems, updateStockItem, addStockItem, loadStockItems } =
+    useStockItems(); // ✅ Usando Supabase em vez de localStorage
   const [isDiagnosticOpen, setIsDiagnosticOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
@@ -3680,6 +3754,47 @@ const Home = () => {
           `❌ [Home] Erro ao atualizar estoque via Supabase:`,
           error
         );
+      }
+    } else if (operation === "add" && itemType === "product") {
+      // Produto ainda não tem linha de estoque (ex.: 1ª produção de um produto novo).
+      // Em vez de só avisar (o pneu "sumia"), CRIAR a linha com o custo real recebido.
+      const newItemId =
+        itemId && !itemId.startsWith("temp_")
+          ? itemId
+          : (typeof crypto !== "undefined" && crypto.randomUUID
+              ? crypto.randomUUID()
+              : `prod_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`);
+      const cost = unitPrice && unitPrice > 0 ? unitPrice : 0;
+      try {
+        await addStockItem({
+          item_id: newItemId,
+          item_name: itemName || "Produto",
+          item_type: "product",
+          unit: "un",
+          quantity: quantity,
+          unit_cost: cost,
+          total_value: quantity * cost,
+          min_level: 0,
+        } as any);
+        console.log(`✅ [Home] Linha de estoque criada para produto novo`, {
+          newItemId,
+          itemName,
+          quantity,
+          cost,
+        });
+        window.dispatchEvent(
+          new CustomEvent("stockItemsUpdated", {
+            detail: {
+              timestamp: Date.now(),
+              source: "Home-UpdateStock-create",
+              updateType: "create",
+              itemId: newItemId,
+              itemType,
+            },
+          })
+        );
+      } catch (error) {
+        console.error(`❌ [Home] Erro ao criar linha de estoque:`, error);
       }
     } else {
       console.warn(`⚠️ [Home] Item de estoque não encontrado:`, {
