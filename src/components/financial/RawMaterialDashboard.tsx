@@ -262,7 +262,13 @@ const RawMaterialDashboard = ({
         reference_name: supplier?.name || "Compra de Material",
         amount: totalAmount,
         description: `Compra de ${quantity} ${material.unit} de ${material.name} - Preço unitário: ${formatCurrency(parseFloat(unitPrice))}`,
-        transaction_date: new Date().toISOString().split("T")[0],
+        // Mesma convenção de data das vendas/caixa (dia local +1, compensado no
+        // display por new Date). Antes usava UTC sem o +1 e caía em outro dia.
+        transaction_date: (() => {
+          const d = new Date();
+          d.setDate(d.getDate() + 1);
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        })(),
       });
 
       // Reset form
