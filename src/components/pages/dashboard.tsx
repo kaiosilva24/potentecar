@@ -133,6 +133,28 @@ const EmpresarialProfitChart = ({
     (a, p) => a + p.receita,
     0
   );
+  // Quebra do período (DRE) para mostrar Receita → Lucro Bruto → Despesas → Líquido
+  const periodFrom = realizedSeries.length ? realizedSeries[0].date : undefined;
+  const periodTo = realizedSeries.length
+    ? realizedSeries[realizedSeries.length - 1].date
+    : undefined;
+  const periodMetrics = useMemo(
+    () =>
+      computeFinancialMetrics(
+        {
+          stockItems: stockItems as any,
+          cashFlowEntries: cashFlowEntries as any,
+          resaleProducts: resaleProducts as any,
+        },
+        periodFrom && periodTo ? { from: periodFrom, to: periodTo } : {}
+      ),
+    [stockItems, cashFlowEntries, resaleProducts, periodFrom, periodTo]
+  );
+  const fmtBRL = (v: number) =>
+    new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(v || 0);
 
   // Estados para lucro empresarial
   const [businessProfit, setBusinessProfit] = useState<number>(0);
@@ -485,72 +507,56 @@ const EmpresarialProfitChart = ({
                   <div className="h-16 bg-tire-600/30 rounded"></div>
                 </div>
               ) : (
-                <div className="flex flex-col justify-start h-full pt-2">
-                  {/* Cabeçalho com valor e ícone */}
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex-1 text-center">
-                      <p className="text-tire-300 text-sm font-medium">
-                        Lucro Empresarial
-                      </p>
-                      <p
-                        className={`text-4xl font-bold ${
-                          realizedPeriodProfit > 0
-                            ? "text-neon-green"
-                            : realizedPeriodProfit < 0
-                              ? "text-red-400"
-                              : "text-tire-200"
-                        }`}
-                      >
-                        {new Intl.NumberFormat("pt-BR", {
-                          style: "currency",
-                          currency: "BRL",
-                        }).format(realizedPeriodProfit)}
-                      </p>
-                      <p className="text-tire-400 text-xs">
-                        Lucro realizado no período (Receita − Custo − Despesas)
-                      </p>
-                    </div>
-                    <div
-                      className={`p-3 rounded-full ${
-                        realizedPeriodProfit > 0
-                          ? "bg-neon-green/20"
-                          : realizedPeriodProfit < 0
-                            ? "bg-red-500/20"
-                            : "bg-tire-500/20"
-                      }`}
+                <div className="flex flex-col justify-center h-full py-1">
+                  {/* Lucro Líquido em destaque */}
+                  <div className="text-center mb-3">
+                    <p className="text-tire-300 text-sm font-medium">
+                      Lucro Líquido no período
+                    </p>
+                    <p
+                      className={`text-3xl font-bold ${periodMetrics.lucroLiquido >= 0 ? "text-neon-green" : "text-red-400"}`}
                     >
-                      <TrendingUp
-                        className={`h-6 w-6 ${
-                          realizedPeriodProfit > 0
-                            ? "text-neon-green"
-                            : realizedPeriodProfit < 0
-                              ? "text-red-400"
-                              : "text-tire-400"
-                        }`}
-                      />
-                    </div>
+                      {fmtBRL(periodMetrics.lucroLiquido)}
+                    </p>
+                    <p className="text-tire-400 text-xs">
+                      margem líquida {periodMetrics.margemLiquida.toFixed(1)}%
+                    </p>
                   </div>
 
-                  {/* Receita do período */}
-                  <div className="border-t border-tire-600/30 pt-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="text-xs text-tire-400">
-                        <p>Receita no período:</p>
-                        <p className="font-medium text-tire-200">
-                          {new Intl.NumberFormat("pt-BR", {
-                            style: "currency",
-                            currency: "BRL",
-                          }).format(realizedPeriodReceita)}
-                        </p>
-                      </div>
-                      <div className="text-xs text-tire-400 text-right">
-                        <p>Margem:</p>
-                        <p className="font-medium text-neon-green">
-                          {realizedPeriodReceita > 0
-                            ? `${((realizedPeriodProfit / realizedPeriodReceita) * 100).toFixed(1)}%`
-                            : "—"}
-                        </p>
-                      </div>
+                  {/* Quebra (de onde vem o lucro) */}
+                  <div className="border-t border-tire-600/30 pt-3 space-y-1.5 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-tire-400">Receita de vendas</span>
+                      <span className="text-tire-100 font-medium">
+                        {fmtBRL(periodMetrics.receitaVendas)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-tire-400">
+                        (−) Custo dos vendidos
+                      </span>
+                      <span className="text-red-300">
+                        {fmtBRL(-periodMetrics.cogs)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-t border-tire-600/20 pt-1.5">
+                      <span className="text-tire-200 font-medium">
+                        = Lucro Bruto
+                      </span>
+                      <span className="text-green-300 font-semibold">
+                        {fmtBRL(periodMetrics.lucroBruto)}{" "}
+                        <span className="text-tire-500 text-xs font-normal">
+                          ({periodMetrics.margemBruta.toFixed(0)}%)
+                        </span>
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-tire-400">
+                        (−) Despesas (salários, custos)
+                      </span>
+                      <span className="text-red-300">
+                        {fmtBRL(-periodMetrics.despesasOperacionais)}
+                      </span>
                     </div>
                   </div>
                 </div>
