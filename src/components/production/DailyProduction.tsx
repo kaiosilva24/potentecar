@@ -71,6 +71,8 @@ const DailyProduction = ({
   isLoading = false,
 }: DailyProductionProps) => {
   const [selectedRecipe, setSelectedRecipe] = useState("");
+  const [recipeSearch, setRecipeSearch] = useState("");
+  const [showRecipeDropdown, setShowRecipeDropdown] = useState(false);
   const [quantityProduced, setQuantityProduced] = useState("");
   const [productionLoss, setProductionLoss] = useState("");
   const [materialLossEnabled, setMaterialLossEnabled] = useState(false);
@@ -576,6 +578,8 @@ const DailyProduction = ({
 
       // Reset form
       setSelectedRecipe("");
+      setRecipeSearch("");
+      setShowRecipeDropdown(false);
       setQuantityProduced("");
       setProductionLoss("");
       setMaterialLossEnabled(false);
@@ -873,24 +877,59 @@ const DailyProduction = ({
               />
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 relative">
               <Label className="text-tire-300">Receita de Produção</Label>
-              <Select value={selectedRecipe} onValueChange={setSelectedRecipe}>
-                <SelectTrigger className="bg-factory-700/50 border-tire-600/30 text-white">
-                  <SelectValue placeholder="Selecione uma receita" />
-                </SelectTrigger>
-                <SelectContent className="bg-factory-800 border-tire-600/30">
-                  {activeRecipes.map((recipe) => (
-                    <SelectItem
-                      key={recipe.id}
-                      value={recipe.id}
-                      className="text-white hover:bg-tire-700/50"
-                    >
-                      {recipe.product_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Input
+                type="text"
+                value={recipeSearch}
+                onChange={(e) => {
+                  setRecipeSearch(e.target.value);
+                  setShowRecipeDropdown(true);
+                  if (!e.target.value) setSelectedRecipe("");
+                }}
+                onFocus={() => setShowRecipeDropdown(true)}
+                onBlur={() =>
+                  setTimeout(() => setShowRecipeDropdown(false), 150)
+                }
+                className="bg-factory-700/50 border-tire-600/30 text-white placeholder:text-tire-400"
+                placeholder="Digite para buscar receita..."
+                autoComplete="off"
+              />
+              {showRecipeDropdown &&
+                (() => {
+                  const filtered = activeRecipes.filter((recipe) =>
+                    recipe.product_name
+                      .toLowerCase()
+                      .includes(recipeSearch.toLowerCase())
+                  );
+                  return (
+                    <div className="absolute z-50 w-full mt-1 max-h-64 overflow-y-auto bg-factory-800 border border-tire-600/30 rounded-md shadow-lg">
+                      {filtered.length > 0 ? (
+                        filtered.map((recipe) => (
+                          <div
+                            key={recipe.id}
+                            onMouseDown={() => {
+                              setSelectedRecipe(recipe.id);
+                              setRecipeSearch(recipe.product_name);
+                              setShowRecipeDropdown(false);
+                            }}
+                            className={`px-3 py-2 cursor-pointer text-white hover:bg-tire-700/50 ${
+                              selectedRecipe === recipe.id
+                                ? "bg-tire-700/40"
+                                : ""
+                            }`}
+                          >
+                            {recipe.product_name}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="px-3 py-2 text-tire-400 text-sm">
+                          Nenhuma receita encontrada
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
             </div>
 
             <div className="space-y-2">
