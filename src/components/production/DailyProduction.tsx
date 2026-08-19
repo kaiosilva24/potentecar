@@ -384,12 +384,17 @@ const DailyProduction = ({
         product_name: recipe.product_name,
         quantity_produced: quantity,
         production_date: productionDate, // Use original date - workaround now applied in dataManager
-        materials_consumed: materialsToConsume.map((m) => ({
-          material_id: m.material_id,
-          material_name: m.material_name,
-          quantity_consumed: m.quantity_consumed,
-          unit: m.unit,
-        })),
+        // Grava o TOTAL realmente descontado (receita + perdas de produção +
+        // perdas de material), para que a exclusão devolva exatamente o que foi
+        // retirado do estoque (antes gravava só a base e vazava material na exclusão).
+        materials_consumed: pendingProduction.consolidatedMaterialSummary.map(
+          (m) => ({
+            material_id: m.material_id,
+            material_name: m.material_name,
+            quantity_consumed: m.total_deduction,
+            unit: m.unit,
+          })
+        ),
         production_loss: productionLoss > 0 ? productionLoss : undefined,
         material_loss: materialLosses.length > 0 ? materialLosses : undefined,
       };

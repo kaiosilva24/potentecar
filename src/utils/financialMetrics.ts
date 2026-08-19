@@ -77,6 +77,15 @@ const num = (v: any): number => {
   return isFinite(n) ? n : 0;
 };
 
+// Dia local de uma transação, usando a MESMA convenção das telas (new Date(...)),
+// para o gráfico/DRE baterem com o que o histórico de vendas mostra.
+const localDayKey = (dateStr?: string): string => {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return String(dateStr).slice(0, 10);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
 export interface ProfitPoint {
   date: string; // YYYY-MM-DD
   displayDate: string; // dd/mm
@@ -120,7 +129,7 @@ export function computeProfitSeries(
     { receita: number; cogs: number; opex: number }
   > = {};
   for (const e of cashFlow) {
-    const d = (e.transaction_date || "").slice(0, 10);
+    const d = localDayKey(e.transaction_date);
     if (!d) continue;
     if (!byDay[d]) byDay[d] = { receita: 0, cogs: 0, opex: 0 };
     const amt = num(e.amount);
@@ -255,7 +264,7 @@ export function computeFinancialMetrics(
 
   const inPeriod = (e: CashFlowEntryLike): boolean => {
     if (!options.from && !options.to) return true;
-    const d = (e.transaction_date || "").slice(0, 10);
+    const d = localDayKey(e.transaction_date);
     if (!d) return true;
     if (options.from && d < options.from) return false;
     if (options.to && d > options.to) return false;

@@ -2472,9 +2472,11 @@ const SalesDashboard = ({
   // Handle delete warranty
   const handleDeleteWarranty = async (
     warrantyId: string,
-    warrantyName: string
+    warrantyName: string,
+    silent = false
   ) => {
     if (
+      silent ||
       confirm(
         `Tem certeza que deseja excluir a garantia: ${warrantyName}?\n\nEsta ação irá devolver os produtos ao estoque.`
       )
@@ -2548,11 +2550,12 @@ const SalesDashboard = ({
         // Delete the warranty entry
         await deleteWarrantyEntry(warrantyId);
 
-        alert(
-          `Garantia excluída com sucesso!\n\n` +
-          `📦 Os produtos foram devolvidos ao estoque automaticamente.\n` +
-          `👤 Contador de garantias do cliente foi atualizado.`
-        );
+        if (!silent)
+          alert(
+            `Garantia excluída com sucesso!\n\n` +
+            `📦 Os produtos foram devolvidos ao estoque automaticamente.\n` +
+            `👤 Contador de garantias do cliente foi atualizado.`
+          );
       } catch (error) {
         console.error("Erro ao excluir garantia:", error);
         alert("Erro ao excluir a garantia. Tente novamente.");
@@ -5099,6 +5102,32 @@ const SalesDashboard = ({
                                       >
                                         <Edit className="h-3 w-3" />
                                       </Button>
+                                      {/* Confirmar pagamento de venda A PRAZO (produto final) */}
+                                      {sale.category === "venda_prazo" &&
+                                        sale.description &&
+                                        isCreditSale(sale.description) && (
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => {
+                                              const originalValue =
+                                                extractOriginalValueFromSale(
+                                                  sale.description || ""
+                                                );
+                                              if (originalValue) {
+                                                handleConfirmCreditPayment(
+                                                  sale.id,
+                                                  sale.reference_name,
+                                                  originalValue
+                                                );
+                                              }
+                                            }}
+                                            className="text-neon-green hover:text-neon-green/80 hover:bg-neon-green/10 p-1 h-6 w-6"
+                                            title="Confirmar pagamento (lançar no caixa)"
+                                          >
+                                            <DollarSign className="h-3 w-3" />
+                                          </Button>
+                                        )}
                                     </div>
                                   </div>
                                 );
@@ -6254,18 +6283,22 @@ const SalesDashboard = ({
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => {
+                                onClick={async () => {
                                   // Deletar todas as garantias desta transação
                                   const confirmDelete = window.confirm(
                                     `Tem certeza que deseja excluir todas as garantias desta transação?\n\nCliente: ${clientName}\nTotal: ${formatCurrency(totalValue)}\nProdutos: ${warranties.length}`
                                   );
                                   if (confirmDelete) {
-                                    warranties.forEach((warranty) => {
-                                      handleDeleteWarranty(
+                                    // Sequencial (await) e silencioso, para não haver
+                                    // corrida no contador/estoque nem N confirmações
+                                    for (const warranty of warranties) {
+                                      await handleDeleteWarranty(
                                         warranty.id,
-                                        `${warranty.product_name} - ${warranty.customer_name}`
+                                        `${warranty.product_name} - ${warranty.customer_name}`,
+                                        true
                                       );
-                                    });
+                                    }
+                                    onRefresh();
                                   }
                                 }}
                                 className="text-red-400 hover:text-red-300 hover:bg-red-900/20 px-2 py-1 h-7"
