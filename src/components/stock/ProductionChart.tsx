@@ -305,14 +305,16 @@ const ProductionChart = ({
       0
     );
     const totalLosses = totalProductionLosses + totalMaterialLosses;
+    // % de perda PONDERADA (perdas totais de produção ÷ total produzido),
+    // não a média simples dos percentuais por produto.
     const averageProductionLossPercentage =
-      chartData.length > 0
-        ? chartData.reduce(
-            (sum, item) => sum + parseFloat(item.productionLossPercentage),
-            0
-          ) / chartData.length
-        : 0;
-    const productionDays = chartData.length;
+      totalProduced > 0 ? (totalProductionLosses / totalProduced) * 100 : 0;
+    // Dias de produção = número de DATAS únicas de produção (não de produtos).
+    const productionDays = new Set(
+      chartData.flatMap((item: any) =>
+        (item.entries || []).map((e: any) => e.production_date)
+      )
+    ).size;
     const averagePerDay =
       productionDays > 0 ? totalProduced / productionDays : 0;
 

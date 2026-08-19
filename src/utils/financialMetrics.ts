@@ -85,8 +85,9 @@ export interface ProfitPoint {
 }
 
 /**
- * Série diária de LUCRO REALIZADO para os últimos `days` dias.
+ * Série diária de LUCRO REALIZADO.
  * profit_dia = Σ(receita venda) − Σ(COGS) − Σ(despesas operacionais), tudo do banco.
+ * `opts` pode ser um número (últimos N dias) ou um intervalo { from, to } (YYYY-MM-DD).
  */
 export function computeProfitSeries(
   input: {
@@ -94,7 +95,7 @@ export function computeProfitSeries(
     cashFlowEntries: CashFlowEntryLike[];
     resaleProducts?: ResaleProductLike[];
   },
-  days: number
+  opts: number | { days?: number; from?: string; to?: string }
 ): ProfitPoint[] {
   const stockItems = input.stockItems || [];
   const cashFlow = input.cashFlowEntries || [];
@@ -134,11 +135,8 @@ export function computeProfitSeries(
   }
 
   const points: ProfitPoint[] = [];
-  const today = new Date();
   let acc = 0;
-  for (let i = days - 1; i >= 0; i--) {
-    const dt = new Date(today);
-    dt.setDate(today.getDate() - i);
+  const pushDay = (dt: Date) => {
     const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
     const dd = byDay[iso] || { receita: 0, cogs: 0, opex: 0 };
     const profit = dd.receita - dd.cogs - dd.opex;
@@ -150,6 +148,36 @@ export function computeProfitSeries(
       receita: dd.receita,
       accumulatedProfit: acc,
     });
+  };
+
+  const opt = typeof opts === "number" ? { days: opts } : opts;
+
+  if (opt.from && opt.to) {
+    // Intervalo customizado [from, to] inclusive
+    let a = new Date(opt.from + "T00:00:00");
+    let b = new Date(opt.to + "T00:00:00");
+    if (isNaN(a.getTime()) || isNaN(b.getTime())) return points;
+    if (a > b) {
+      const t = a;
+      a = b;
+      b = t;
+    }
+    let guard = 0;
+    for (
+      const dt = new Date(a);
+      dt <= b && guard < 3660;
+      dt.setDate(dt.getDate() + 1), guard++
+    ) {
+      pushDay(new Date(dt));
+    }
+  } else {
+    const days = opt.days && opt.days > 0 ? opt.days : 30;
+    const today = new Date();
+    for (let i = days - 1; i >= 0; i--) {
+      const dt = new Date(today);
+      dt.setDate(today.getDate() - i);
+      pushDay(dt);
+    }
   }
   return points;
 }

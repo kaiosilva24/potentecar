@@ -105,20 +105,27 @@ const EmpresarialProfitChart = ({
 
   // ✅ LUCRO REALIZADO (Receita − COGS − Despesas) — série diária do banco.
   // Substitui o antigo mecanismo de "baseline" (que nunca era confirmado).
-  const realizedDays =
-    dateFilter === "custom" ? 30 : parseInt(dateFilter) || 30;
-  const realizedSeries = useMemo(
-    () =>
-      computeProfitSeries(
-        {
-          stockItems: stockItems as any,
-          cashFlowEntries: cashFlowEntries as any,
-          resaleProducts: resaleProducts as any,
-        },
-        realizedDays
-      ),
-    [stockItems, cashFlowEntries, resaleProducts, realizedDays]
-  );
+  const realizedSeries = useMemo(() => {
+    const data = {
+      stockItems: stockItems as any,
+      cashFlowEntries: cashFlowEntries as any,
+      resaleProducts: resaleProducts as any,
+    };
+    if (dateFilter === "custom" && customStartDate && customEndDate) {
+      return computeProfitSeries(data, {
+        from: customStartDate,
+        to: customEndDate,
+      });
+    }
+    return computeProfitSeries(data, parseInt(dateFilter) || 30);
+  }, [
+    stockItems,
+    cashFlowEntries,
+    resaleProducts,
+    dateFilter,
+    customStartDate,
+    customEndDate,
+  ]);
   const realizedPeriodProfit = realizedSeries.length
     ? realizedSeries[realizedSeries.length - 1].accumulatedProfit
     : 0;
@@ -448,8 +455,8 @@ const EmpresarialProfitChart = ({
                   <Tooltip content={<CustomTooltip />} />
                   <Line
                     type="monotone"
-                    dataKey="profit"
-                    name="Lucro Empresarial"
+                    dataKey="accumulatedProfit"
+                    name="Lucro Acumulado"
                     stroke="#10B981"
                     strokeWidth={3}
                     dot={{ fill: "#10B981", strokeWidth: 2, r: 4 }}
