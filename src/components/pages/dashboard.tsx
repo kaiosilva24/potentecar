@@ -3342,10 +3342,10 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
                   Lucro Médio Produtos Revenda
                 </p>
                 <p className="text-2xl font-bold text-green-400">
-                  {isLoadingResaleProfit || averageResaleProfit === null ? (
+                  {false ? (
                     <span className="animate-pulse">Carregando...</span>
                   ) : (
-                    formatCurrency(averageResaleProfit)
+                    formatCurrency(fin.lucroMedioRevenda)
                   )}
                 </p>
               </div>

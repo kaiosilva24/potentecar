@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,13 @@ import {
   GitBranch,
 } from "lucide-react";
 import { dataManager } from "../../utils/dataManager";
+import {
+  useStockItems,
+  useCashFlow,
+  useResaleProducts,
+  useDebts,
+} from "../../hooks/useDataPersistence";
+import { computeFinancialMetrics } from "../../utils/financialMetrics";
 import { useAuth } from "../../../supabase/auth";
 import { useToast } from "@/components/ui/use-toast";
 import ChangeHistoryTab from "./ChangeHistoryTab";
@@ -46,6 +53,22 @@ const SettingsDashboard = ({
   // Auth e Toast hooks
   const { signUp } = useAuth();
   const { toast } = useToast();
+
+  // ✅ Fonte única das métricas (Valor/Lucro Empresarial) — igual ao painel
+  const { stockItems } = useStockItems();
+  const { cashFlowEntries } = useCashFlow();
+  const { resaleProducts } = useResaleProducts();
+  const { debts } = useDebts();
+  const fin = useMemo(
+    () =>
+      computeFinancialMetrics({
+        stockItems: stockItems as any,
+        cashFlowEntries: cashFlowEntries as any,
+        resaleProducts: resaleProducts as any,
+        debts: debts as any,
+      }),
+    [stockItems, cashFlowEntries, resaleProducts, debts]
+  );
 
   // Estados para exportar/importar
   const [isExporting, setIsExporting] = useState(false);
@@ -1083,11 +1106,7 @@ const SettingsDashboard = ({
                           Valor Empresarial
                         </p>
                         <p className="text-2xl font-bold text-neon-green">
-                          {isLoadingBusinessValue ? (
-                            <span className="animate-pulse">Carregando...</span>
-                          ) : (
-                            formatCurrency(businessValue)
-                          )}
+                          {formatCurrency(fin.valorEmpresarial)}
                         </p>
                         <p className="text-tire-400 text-xs">
                           Patrimônio total da empresa
@@ -1109,22 +1128,16 @@ const SettingsDashboard = ({
                           Lucro Empresarial
                         </p>
                         <p
-                          className={`text-2xl font-bold ${businessProfit >= 0 ? "text-neon-green" : "text-red-400"}`}
+                          className={`text-2xl font-bold ${fin.lucroLiquido >= 0 ? "text-neon-green" : "text-red-400"}`}
                         >
-                          {isLoadingBusinessProfit ? (
-                            <span className="animate-pulse">Carregando...</span>
-                          ) : (
-                            formatCurrency(businessProfit)
-                          )}
+                          {formatCurrency(fin.lucroLiquido)}
                         </p>
                         <p className="text-tire-400 text-xs">
-                          {hasBaseline
-                            ? "Diferença do baseline ativo"
-                            : "Baseline não ativado"}
+                          Lucro realizado (Receita − Custo − Despesas)
                         </p>
                       </div>
                       <div
-                        className={`p-3 rounded-full ${businessProfit >= 0 ? "bg-neon-green/20" : "bg-red-400/20"}`}
+                        className={`p-3 rounded-full ${fin.lucroLiquido >= 0 ? "bg-neon-green/20" : "bg-red-400/20"}`}
                       >
                         <TrendingUp
                           className={`h-6 w-6 ${businessProfit >= 0 ? "text-neon-green" : "text-red-400"}`}

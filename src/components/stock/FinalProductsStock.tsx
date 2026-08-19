@@ -1193,12 +1193,19 @@ const FinalProductsStock: React.FC<FinalProductsStockProps> = ({
             <p className="text-tire-400 text-sm">Custo Médio por Pneu</p>
             <p className="text-2xl font-bold text-neon-orange">
               {formatCurrency(
-                filteredProductAnalysis.length > 0
-                  ? filteredProductAnalysis.reduce(
-                      (sum, p) => sum + p.costPerTire,
-                      0
-                    ) / filteredProductAnalysis.length
-                  : 0
+                (() => {
+                  // Média PONDERADA pela quantidade (Σ valor ÷ Σ quantidade)
+                  const totalQty = filteredProductAnalysis.reduce(
+                    (s, p) => s + (Number(p.quantity) || 0),
+                    0
+                  );
+                  const totalVal = filteredProductAnalysis.reduce(
+                    (s, p) =>
+                      s + (Number(p.quantity) || 0) * (Number(p.costPerTire) || 0),
+                    0
+                  );
+                  return totalQty > 0 ? totalVal / totalQty : 0;
+                })()
               )}
             </p>
           </div>

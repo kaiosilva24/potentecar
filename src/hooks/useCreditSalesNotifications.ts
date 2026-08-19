@@ -17,10 +17,11 @@ export const useCreditSalesNotifications = () => {
 
   // Função para extrair valor original das vendas a prazo
   const extractOriginalValueFromSale = (description: string): number => {
-    const match = description.match(/Valor_Original:\s*R?\$?\s*([\d.,]+)/);
+    // Valor_Original é gravado em formato máquina (ponto decimal), ex.: "1234.56".
+    // NÃO remover o ponto — parseFloat direto (antes inflava 100×).
+    const match = description.match(/Valor_Original:\s*([0-9.]+)/);
     if (match) {
-      const valueStr = match[1].replace(/\./g, "").replace(",", ".");
-      return parseFloat(valueStr) || 0;
+      return parseFloat(match[1]) || 0;
     }
     return 0;
   };

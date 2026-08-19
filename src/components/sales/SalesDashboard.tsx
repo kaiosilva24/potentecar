@@ -1507,6 +1507,40 @@ const SalesDashboard = ({
       return;
     }
 
+    // Validar quantidade > 0 e estoque suficiente de CADA item antes de gravar
+    // (evita venda com estoque negativo e itens com quantidade zero).
+    for (const cartItem of productCart) {
+      if (!(cartItem.quantity > 0)) {
+        alert(
+          `Quantidade inválida para "${cartItem.name}". Informe uma quantidade maior que zero.`
+        );
+        return;
+      }
+      let available = 0;
+      if (cartItem.type === "final" || cartItem.type === "warranty") {
+        available =
+          availableProducts.find((x) => x.id === cartItem.originalProductId)
+            ?.quantity ?? 0;
+      } else if (cartItem.type === "resale") {
+        available =
+          stockItems.find(
+            (it) =>
+              it.item_id === cartItem.originalProductId &&
+              it.item_type === "product"
+          )?.quantity ?? 0;
+      } else if (cartItem.type === "material") {
+        available =
+          availableRawMaterials.find((x) => x.id === cartItem.originalProductId)
+            ?.quantity ?? 0;
+      }
+      if (cartItem.quantity > available) {
+        alert(
+          `Estoque insuficiente para "${cartItem.name}".\nDisponível: ${available}\nSolicitado: ${cartItem.quantity}`
+        );
+        return;
+      }
+    }
+
     setIsProcessingSale(true);
 
     try {
@@ -1758,7 +1792,7 @@ const SalesDashboard = ({
       /Preço Unit:\s*R\$\s*([0-9.,]+)/
     );
     const unitPrice = unitPriceMatch
-      ? parseFloat(unitPriceMatch[1].replace(",", "."))
+      ? parseFloat(unitPriceMatch[1].replace(/\./g, "").replace(",", "."))
       : 0;
     const salespersonMatch = sale.description?.match(/Vendedor:\s*([^|]+)/);
     const salesperson = salespersonMatch ? salespersonMatch[1].trim() : "";
@@ -1791,6 +1825,18 @@ const SalesDashboard = ({
     try {
       const newQuantity = parseFloat(editSaleData.quantity);
       const newUnitPrice = parseFloat(editSaleData.unitPrice);
+      // Impede gravar NaN/valores inválidos no estoque e no financeiro
+      if (
+        !isFinite(newQuantity) ||
+        !isFinite(newUnitPrice) ||
+        newQuantity <= 0 ||
+        newUnitPrice < 0
+      ) {
+        alert(
+          "Quantidade e preço devem ser números válidos (quantidade maior que zero)."
+        );
+        return;
+      }
       const newTotalValue = newQuantity * newUnitPrice;
 
       // Extract original product info and quantity
@@ -1943,10 +1989,15 @@ const SalesDashboard = ({
   };
 
   // Handle delete sale
-  const handleDeleteSale = async (saleId: string, saleName: string) => {
+  const handleDeleteSale = async (
+    saleId: string,
+    saleName: string,
+    silent = false
+  ) => {
     console.log("🔥 [DELETE SALE] Iniciando exclusão:", { saleId, saleName });
 
     if (
+      silent ||
       confirm(
         `Tem certeza que deseja excluir a venda: ${saleName}?\n\nEsta ação irá devolver os produtos ao estoque.`
       )
@@ -2354,10 +2405,10 @@ const SalesDashboard = ({
           successMessage += `📦 Os produtos foram devolvidos ao estoque automaticamente.`;
         }
 
-        alert(successMessage);
+        if (!silent) alert(successMessage);
 
         // Refresh data to update UI
-        onRefresh();
+        if (!silent) onRefresh();
       } catch (error) {
         console.error("❌ [DELETE SALE] Erro geral ao excluir venda:", error);
         alert(
@@ -4991,7 +5042,9 @@ const SalesDashboard = ({
                                 );
                                 const unitPrice = unitPriceMatch
                                   ? parseFloat(
-                                    unitPriceMatch[1].replace(",", ".")
+                                    unitPriceMatch[1]
+                                      .replace(/\./g, "")
+                                      .replace(",", ".")
                                   )
                                   : 0;
 
@@ -5064,12 +5117,22 @@ const SalesDashboard = ({
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() =>
-                                  handleDeleteSale(
-                                    sales[0].id,
-                                    sales[0].reference_name
+                                onClick={async () => {
+                                  if (
+                                    !confirm(
+                                      `Excluir a venda de ${clientName} (${sales.length} ${sales.length > 1 ? "itens" : "item"})?\n\nIsso devolve os produtos ao estoque.`
+                                    )
                                   )
-                                }
+                                    return;
+                                  for (const s of sales) {
+                                    await handleDeleteSale(
+                                      s.id,
+                                      s.reference_name,
+                                      true
+                                    );
+                                  }
+                                  onRefresh();
+                                }}
                                 className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
                               >
                                 <Trash2 className="h-4 w-4 mr-1" />
@@ -5613,7 +5676,9 @@ const SalesDashboard = ({
                                 );
                                 const unitPrice = unitPriceMatch
                                   ? parseFloat(
-                                    unitPriceMatch[1].replace(",", ".")
+                                    unitPriceMatch[1]
+                                      .replace(/\./g, "")
+                                      .replace(",", ".")
                                   )
                                   : 0;
 
@@ -5716,12 +5781,22 @@ const SalesDashboard = ({
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() =>
-                                  handleDeleteSale(
-                                    sales[0].id,
-                                    sales[0].reference_name
+                                onClick={async () => {
+                                  if (
+                                    !confirm(
+                                      `Excluir a venda de ${clientName} (${sales.length} ${sales.length > 1 ? "itens" : "item"})?\n\nIsso devolve os produtos ao estoque.`
+                                    )
                                   )
-                                }
+                                    return;
+                                  for (const s of sales) {
+                                    await handleDeleteSale(
+                                      s.id,
+                                      s.reference_name,
+                                      true
+                                    );
+                                  }
+                                  onRefresh();
+                                }}
                                 className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
                               >
                                 <Trash2 className="h-4 w-4 mr-1" />

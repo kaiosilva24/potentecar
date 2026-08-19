@@ -66,6 +66,7 @@ export interface FinancialMetrics {
   lucroLiquido: number;
   margemLiquida: number;
   lucroMedioPorPneu: number;
+  lucroMedioRevenda: number;
   qtdPneusVendidos: number;
   // auditoria
   vendasSemCusto: number;
@@ -277,6 +278,9 @@ export function computeFinancialMetrics(
   let cogs = 0;
   let qtdPneusVendidos = 0;
   let vendasSemCusto = 0;
+  let receitaRevenda = 0;
+  let cogsRevenda = 0;
+  let qtdRevendaVendida = 0;
   const despesasPorCategoria: Record<string, number> = {};
   let comprasFornecedores = 0;
 
@@ -286,11 +290,16 @@ export function computeFinancialMetrics(
     if (e.type === "income" && e.category === "venda") {
       receitaVendas += amt;
       const desc = e.description || "";
+      const tipo = (desc.match(/TIPO_PRODUTO:\s*(\w+)/) || [])[1];
+      const qtdItem = num((desc.match(/Qtd:\s*([0-9.]+)/) || [])[1]);
       const { cost, ok } = cogsOf(desc);
       if (ok) {
         cogs += cost;
-        if (/TIPO_PRODUTO:\s*final/.test(desc)) {
-          qtdPneusVendidos += num((desc.match(/Qtd:\s*([0-9.]+)/) || [])[1]);
+        if (tipo === "final") qtdPneusVendidos += qtdItem;
+        if (tipo === "revenda") {
+          receitaRevenda += amt;
+          cogsRevenda += cost;
+          qtdRevendaVendida += qtdItem;
         }
       } else {
         vendasSemCusto += 1;
@@ -315,8 +324,13 @@ export function computeFinancialMetrics(
   const margemLiquida = receitaVendas > 0 ? (lucroLiquido / receitaVendas) * 100 : 0;
   const lucroMedioPorPneu =
     qtdPneusVendidos > 0 ? lucroBruto / qtdPneusVendidos : 0;
+  const lucroMedioRevenda =
+    qtdRevendaVendida > 0
+      ? (receitaRevenda - cogsRevenda) / qtdRevendaVendida
+      : 0;
 
   return {
+    lucroMedioRevenda,
     saldoCaixa,
     saldoMateriaPrima,
     saldoProdutosFinais,
