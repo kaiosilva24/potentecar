@@ -72,7 +72,18 @@
   }
   body {
     @apply bg-background text-foreground;
-    background: linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 50%, #16213e 100%);
+    background-color: #0a0e1a;
+    background-image: radial-gradient(
+        1000px circle at 12% -10%,
+        rgba(0, 212, 255, 0.14),
+        transparent 42%
+      ),
+      radial-gradient(
+        1000px circle at 100% 8%,
+        rgba(139, 92, 246, 0.12),
+        transparent 42%
+      ),
+      linear-gradient(155deg, #0b1224 0%, #0a0e1a 50%, #0c1330 100%);
     min-height: 100vh;
   }
 }
@@ -105,12 +116,62 @@
   }
 
   .factory-grid {
-    background-image: linear-gradient(
-        rgba(0, 212, 255, 0.1) 1px,
-        transparent 1px
+    background-color: #0a0e1a;
+    background-image:
+      /* vinheta suave para focar o centro */
+      radial-gradient(
+        150% 130% at 50% 32%,
+        transparent 50%,
+        rgba(0, 0, 0, 0.55) 100%
       ),
-      linear-gradient(90deg, rgba(0, 212, 255, 0.1) 1px, transparent 1px);
-    background-size: 20px 20px;
+      /* brilhos de canto (aurora) — cyan + roxo da marca */
+        radial-gradient(
+          1100px circle at 6% -10%,
+          rgba(0, 212, 255, 0.16),
+          transparent 42%
+        ),
+      radial-gradient(
+        1000px circle at 106% 0%,
+        rgba(139, 92, 246, 0.14),
+        transparent 40%
+      ),
+      radial-gradient(
+        1000px circle at 94% 110%,
+        rgba(0, 212, 255, 0.1),
+        transparent 46%
+      ),
+      radial-gradient(
+        1200px circle at 28% 120%,
+        rgba(139, 92, 246, 0.08),
+        transparent 50%
+      ),
+      /* grade tech fina */
+        linear-gradient(rgba(120, 230, 255, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(120, 230, 255, 0.05) 1px, transparent 1px),
+      /* base com profundidade */
+        linear-gradient(155deg, #0b1224 0%, #0a0e1a 48%, #0c1330 100%);
+    background-size:
+      100% 100%,
+      100% 100%,
+      100% 100%,
+      100% 100%,
+      100% 100%,
+      34px 34px,
+      34px 34px,
+      100% 100%;
+    background-position: center;
+    background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, no-repeat,
+      repeat, repeat, no-repeat;
+    animation: auroraDrift 26s ease-in-out infinite alternate;
+  }
+
+  @keyframes auroraDrift {
+    0% {
+      background-position: 49.4% 50.6%;
+    }
+    100% {
+      background-position: 50.6% 49.4%;
+    }
   }
 
   .holographic {

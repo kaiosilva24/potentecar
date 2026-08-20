@@ -3833,7 +3833,7 @@ const Home = () => {
     }
   };
   return (
-    <div className="h-screen bg-gradient-to-br from-factory-900 via-factory-800 to-tire-900 factory-grid overflow-hidden">
+    <div className="h-screen factory-grid overflow-hidden">
       <div className="flex h-screen">
         <Sidebar
           onItemClick={handleSidebarClick}
