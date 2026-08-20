@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,7 +26,13 @@ import {
   Settings,
   AlertTriangle,
 } from "lucide-react";
-import { useStockItems, useProducts } from "@/hooks/useDataPersistence";
+import {
+  useStockItems,
+  useProducts,
+  useCashFlow,
+  useProductionEntries,
+} from "@/hooks/useDataPersistence";
+import { computeFinancialMetrics } from "@/utils/financialMetrics";
 import { useToast } from "@/components/ui/use-toast";
 import { dataManager } from "@/utils/dataManager";
 import { StockBaselineManager } from "@/utils/stockBaselineManager";
@@ -62,6 +68,19 @@ const FinalProductsStock: React.FC<FinalProductsStockProps> = ({
     createStockItem,
   } = useStockItems();
   const { products, isLoading: productsLoading } = useProducts();
+  const { cashFlowEntries } = useCashFlow();
+  const { productionEntries } = useProductionEntries();
+  // Overhead por pneu (rateio de despesas + perdas) — para o custo CHEIO (absorção),
+  // consistente com o Dashboard. custoCheio = custo material + overheadPorPneu.
+  const overheadPorPneu = useMemo(
+    () =>
+      computeFinancialMetrics({
+        stockItems: stockItems as any,
+        cashFlowEntries: cashFlowEntries as any,
+        productionEntries: productionEntries as any,
+      }).overheadPorPneu,
+    [stockItems, cashFlowEntries, productionEntries]
+  );
   const [productAnalysis, setProductAnalysis] = useState<ProductAnalysis[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -350,13 +369,19 @@ const FinalProductsStock: React.FC<FinalProductsStockProps> = ({
         const product = products.find((p) => p.id === stockItem.item_id);
         if (!product) return null;
 
-        // Custo REAL do banco (consistente com o painel/estoque); localStorage só como fallback
-        const costPerTire =
-          stockItem.unit_cost && stockItem.unit_cost > 0
-            ? stockItem.unit_cost
-            : getSpecificCost(product.name);
         const measures = extractMeasures(product.name);
         const quantity = stockItem.quantity || 0;
+        // Material por pneu = total_value/quantidade (MESMA base do Dashboard, que usa
+        // total_value); fallback unit_cost/localStorage quando não há valor/quantidade.
+        const totalValueDb = Number(stockItem.total_value) || 0;
+        const materialCost =
+          quantity > 0 && totalValueDb > 0
+            ? totalValueDb / quantity
+            : stockItem.unit_cost && stockItem.unit_cost > 0
+              ? stockItem.unit_cost
+              : getSpecificCost(product.name);
+        // Custo CHEIO (absorção) = material + overhead rateado — igual ao Dashboard.
+        const costPerTire = materialCost + overheadPorPneu;
         const totalValue = quantity * costPerTire;
         const minLevel = stockItem.min_level || 0;
 
@@ -395,7 +420,7 @@ const FinalProductsStock: React.FC<FinalProductsStockProps> = ({
       .filter(Boolean) as ProductAnalysis[];
 
     setProductAnalysis(analysis);
-  }, [stockItems, products, realTimeUpdates]); // Adicionada dependência realTimeUpdates para forçar recálculo
+  }, [stockItems, products, realTimeUpdates, overheadPorPneu]); // Adicionada dependência realTimeUpdates para forçar recálculo
 
   // useEffect específico para monitorar mudanças nos custos em tempo real
   useEffect(() => {

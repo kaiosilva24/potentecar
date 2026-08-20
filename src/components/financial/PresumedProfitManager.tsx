@@ -54,6 +54,7 @@ import type {
   WarrantyEntry,
 } from "@/types/financial";
 import { useCostCalculationOptions } from "@/hooks/useDataPersistence";
+import { computeFinancialMetrics } from "@/utils/financialMetrics";
 import { dataManager } from "@/utils/dataManager";
 
 // 🔧 DEBUG FLAGS - Desabilitar logs para máxima performance
@@ -117,6 +118,17 @@ const PresumedProfitManager = ({
   warrantyEntries = [],
   hideCharts = false,
 }: PresumedProfitManagerProps) => {
+  // Overhead por pneu (rateio de despesas + perdas) — custo CHEIO por absorção,
+  // consistente com o Dashboard/Estoque. custoCheio = material + overheadPorPneu.
+  const overheadPorPneu = useMemo(
+    () =>
+      computeFinancialMetrics({
+        stockItems: stockItems as any,
+        cashFlowEntries: cashFlowEntries as any,
+        productionEntries: productionEntries as any,
+      }).overheadPorPneu,
+    [stockItems, cashFlowEntries, productionEntries]
+  );
   const [dateFilter, setDateFilter] = useState("all");
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
@@ -599,15 +611,10 @@ const PresumedProfitManager = ({
   // Calculate complete tire cost using the same logic as TireCostManager
   // SINCRONIZADO com as opções do TireCostManager
   const calculateTireCost = (productName: string): number => {
-    // CORREÇÃO DEFINITIVA: Usar custo do TireCostManager (Custo por Pneu)
-    // Este é o custo correto que é atualizado dinamicamente
-    const tireCostFromManager = getSpecificCostFromTireCostManager(productName);
+    // Custo CHEIO por pneu (absorção) = material (banco/receita) + overhead rateado
+    // (despesas + perdas ÷ produção). Consistente com o Dashboard/Estoque; sem localStorage.
 
-    if (tireCostFromManager > 0) {
-      return tireCostFromManager;
-    }
-
-    // Fallback 1: Buscar no estoque de produtos finais
+    // Preferir o custo de material gravado no estoque (banco)
     const productInStock = stockItems.find((item) => {
       const isProduct = item.item_type === "product";
       const nameMatch =
@@ -616,16 +623,15 @@ const PresumedProfitManager = ({
       return isProduct && nameMatch;
     });
 
-    if (productInStock && productInStock.unit_cost > 0) {
-      console.log(
-        `⚠️ [PresumedProfitManager] TireCostManager não encontrado, usando estoque para ${productName}:`,
-        {
-          productName,
-          unit_cost: productInStock.unit_cost,
-          source: "stock_items (fallback)",
-        }
-      );
-      return productInStock.unit_cost;
+    if (productInStock) {
+      // Material por pneu = total_value/quantidade (MESMA base do Dashboard); fallback unit_cost.
+      const q = Number(productInStock.quantity) || 0;
+      const tv = Number(productInStock.total_value) || 0;
+      const materialUnit =
+        q > 0 && tv > 0 ? tv / q : Number(productInStock.unit_cost) || 0;
+      if (materialUnit > 0) {
+        return materialUnit + overheadPorPneu;
+      }
     }
 
     // Fallback 2: Usar custo da receita (matéria-prima)
@@ -847,7 +853,7 @@ const PresumedProfitManager = ({
     //   },
     // );
 
-    return totalCost;
+    return totalCost + overheadPorPneu;
   };
 
   // Check if a product has a registered recipe - RIGOROSO: APENAS COM RECEITAS VÁLIDAS

@@ -68,6 +68,7 @@ interface ResaleProfitData {
   profitMargin: number;
   averageProfitPerUnit: number;
   salesCount: number;
+  isRawMaterial?: boolean;
 }
 
 const ResaleProductProfitManager = ({
@@ -410,6 +411,7 @@ const ResaleProductProfitManager = ({
         profitMargin: 0,
         averageProfitPerUnit: 0,
         salesCount: 0,
+        isRawMaterial: isRawMat && !isResale,
       };
 
       // Calculate cost using stock item unit cost (works for both resale products and raw materials)
@@ -501,7 +503,19 @@ const ResaleProductProfitManager = ({
       (sum, item) => sum + item.totalSales,
       0
     );
-    const averageProfitPerUnit = totalSales > 0 ? totalProfit / totalSales : 0;
+    // Média por unidade SOMENTE sobre produtos de revenda (unidades). Matéria-prima
+    // é vendida por kg/L — somar kg com unidades produziria um "lucro por unidade" sem sentido.
+    const revendaRows = profitData.filter((item) => !item.isRawMaterial);
+    const revendaProfit = revendaRows.reduce(
+      (sum, item) => sum + item.totalProfit,
+      0
+    );
+    const revendaUnits = revendaRows.reduce(
+      (sum, item) => sum + item.totalSales,
+      0
+    );
+    const averageProfitPerUnit =
+      revendaUnits > 0 ? revendaProfit / revendaUnits : 0;
     const overallProfitMargin =
       totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
 
@@ -676,14 +690,14 @@ const ResaleProductProfitManager = ({
 
   // Limpar filtros
   const handleClearFilters = () => {
-    setDateFilter("last30days");
+    setDateFilter("all");
     setCustomStartDate("");
     setCustomEndDate("");
   };
 
   // Verificar se há filtros ativos
   const hasActiveFilters =
-    dateFilter !== "last30days" || customStartDate || customEndDate;
+    dateFilter !== "all" || customStartDate || customEndDate;
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {

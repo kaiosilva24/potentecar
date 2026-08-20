@@ -66,10 +66,13 @@ import {
   useStockItems,
   useResaleProducts,
   useCostCalculationOptions,
+  useCashFlow,
+  useProductionEntries,
 } from "@/hooks/useDataPersistence";
 import { useToast } from "@/components/ui/use-toast";
 import { dataManager } from "@/utils/dataManager";
 import { StockBaselineManager } from "@/utils/stockBaselineManager";
+import { computeFinancialMetrics } from "@/utils/financialMetrics";
 
 interface StockDashboardProps {
   onRefresh?: () => void;
@@ -551,6 +554,19 @@ const StockDashboard = ({
     updateStockItem,
     addStockItem,
   } = useStockItems();
+  const { cashFlowEntries } = useCashFlow();
+  const { productionEntries } = useProductionEntries();
+  // Custo CHEIO por pneu (absorção) — igual ao Dashboard principal.
+  const overheadPorPneu = useMemo(
+    () =>
+      computeFinancialMetrics({
+        stockItems: stockItems as any,
+        cashFlowEntries: cashFlowEntries as any,
+        resaleProducts: resaleProducts as any,
+        productionEntries: productionEntries as any,
+      }).overheadPorPneu,
+    [stockItems, cashFlowEntries, resaleProducts, productionEntries]
+  );
 
   // Estado para forçar re-renderização quando há mudanças nos produtos de revenda
   const [resaleDataVersion, setResaleDataVersion] = useState(0);
@@ -1222,32 +1238,14 @@ const StockDashboard = ({
       finalProductStockItems
     );
 
-    // Valor dos produtos finais a CUSTO REAL do banco (unit_cost gravado no estoque),
-    // consistente com o painel principal (financialMetrics). Sem localStorage.
-    const finalProductTotalValue = finalProductStockItems.reduce(
-      (sum, item) => {
-        const quantity = Number(item.quantity) || 0;
-        const unitCost = Number(item.unit_cost) || 0;
-        const costSource = "ESTOQUE (banco)";
-
-        const calculatedValue = unitCost * quantity;
-
-        console.log(`   - Quantidade: ${quantity}`);
-        console.log(
-          `   - Custo usado: R$ ${unitCost.toFixed(2)} (${costSource})`
-        );
-        console.log(
-          `   - Custo estoque: R$ ${(Number(item.unit_cost) || 0).toFixed(2)}`
-        );
-        console.log(`   - Valor calculado: R$ ${calculatedValue.toFixed(2)}`);
-        console.log(
-          `   - Soma acumulada: R$ ${(sum + calculatedValue).toFixed(2)}`
-        );
-
-        return sum + calculatedValue;
-      },
+    // Valor dos produtos finais a CUSTO CHEIO (absorção) = material (total_value do banco,
+    // mesma base do painel principal) + rateio de despesas/perdas por pneu.
+    const finalProductMaterialValue = finalProductStockItems.reduce(
+      (sum, item) => sum + (Number(item.total_value) || 0),
       0
     );
+    const finalProductTotalValue =
+      finalProductMaterialValue + overheadPorPneu * finalProductTotalQuantity;
 
     console.log(
       `✅ [StockDashboard] VALOR FINAL CALCULADO dos produtos finais: R$ ${finalProductTotalValue.toFixed(2)}`,
@@ -1342,13 +1340,12 @@ const StockDashboard = ({
       `⚠️ [StockDashboard] Estoque baixo - Matéria-prima: ${materialLowStock}, Finais: ${finalProductLowStock}, Revenda: ${resaleLowStock}`
     );
 
-    // Usar custo médio por pneu sincronizado do TireCostManager, com fallback para cálculo local
+    // Custo CHEIO por pneu (absorção) = valor total (material + overhead) ÷ quantidade.
+    // Igual ao Dashboard principal (fin.custoAbsorcaoPorPneu). Sem localStorage.
     const finalProductAverageCost =
-      averageCostPerTire > 0
-        ? averageCostPerTire
-        : finalProductTotalQuantity > 0
-          ? finalProductTotalValue / finalProductTotalQuantity
-          : 0;
+      finalProductTotalQuantity > 0
+        ? finalProductTotalValue / finalProductTotalQuantity
+        : 0;
 
     console.log(`💰 [StockDashboard] CUSTO MÉDIO POR PNEU - Produtos Finais:`, {
       synchronizedCostData: synchronizedCostData,
@@ -1408,6 +1405,7 @@ const StockDashboard = ({
     averageCostPerTire,
     synchronizedCostData,
     lastCostUpdate,
+    overheadPorPneu,
   ]);
 
   // Update card values with current metrics
@@ -1760,6 +1758,7 @@ const StockDashboard = ({
               products={getAllProducts()}
               resaleProducts={resaleProducts}
               stockItems={stockItems}
+              overheadPorPneu={overheadPorPneu}
               productType="all"
             />
           </TabsContent>

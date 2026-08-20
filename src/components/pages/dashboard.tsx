@@ -3258,8 +3258,7 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
                   Saldo Produtos Finais
                 </p>
                 <p className="text-2xl font-bold text-tire-200">
-                  {isLoadingFinalProductStock ||
-                  finalProductStockBalance === null ? (
+                  {isLoadingFinalProductStock ? (
                     <span className="animate-pulse">Carregando...</span>
                   ) : (
                     formatCurrency(fin.saldoProdutosFinaisAbsorcao)
@@ -3282,8 +3281,7 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
                   Saldo Produtos Revenda
                 </p>
                 <p className="text-2xl font-bold text-tire-200">
-                  {isLoadingResaleProductStock ||
-                  resaleProductStockBalance === null ? (
+                  {isLoadingResaleProductStock ? (
                     <span className="animate-pulse">Carregando...</span>
                   ) : (
                     formatCurrency(fin.saldoProdutosRevenda)

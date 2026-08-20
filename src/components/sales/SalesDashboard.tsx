@@ -1561,13 +1561,20 @@ const SalesDashboard = ({
 
         // Record transaction with payment method - SKIP warranty items (não registrar garantias no financeiro)
         if (cartItem.type !== "warranty") {
+          // Unidade correta: matéria-prima é vendida por kg/L (não "unidades")
+          const unitLabel =
+            cartItem.type === "material"
+              ? availableRawMaterials.find(
+                  (m) => m.id === cartItem.originalProductId
+                )?.unit || "unidades"
+              : "unidades";
           if (paymentMethod !== "A PRAZO") {
             await addCashFlowEntry({
               type: "income",
               category: "venda",
               reference_name: `Venda Multi-Produto para ${customer.name} - ${cartItem.name}`,
               amount: cartItem.totalPrice,
-              description: `TIPO_PRODUTO: ${cartItem.type === "resale" ? "revenda" : cartItem.type === "material" ? "materia_prima" : cartItem.type} | Vendedor: ${salesperson.name} | Produto: ${cartItem.name} | Qtd: ${cartItem.quantity} unidades | Preço Unit: ${formatCurrency(cartItem.unitPrice)} | Método: ${paymentMethod} | ID_Produto: ${cartItem.originalProductId}`,
+              description: `TIPO_PRODUTO: ${cartItem.type === "resale" ? "revenda" : cartItem.type === "material" ? "materia_prima" : cartItem.type} | Vendedor: ${salesperson.name} | Produto: ${cartItem.name} | Qtd: ${cartItem.quantity} ${unitLabel} | Preço Unit: ${formatCurrency(cartItem.unitPrice)} | Método: ${paymentMethod} | ID_Produto: ${cartItem.originalProductId}`,
               transaction_date: todayLocal,
             });
           } else {
@@ -1577,7 +1584,7 @@ const SalesDashboard = ({
               category: "venda_prazo",
               reference_name: `[PENDENTE] Venda Multi-Produto para ${customer.name} - ${cartItem.name}`,
               amount: 0,
-              description: `TIPO_PRODUTO: ${cartItem.type === "resale" ? "revenda" : cartItem.type === "material" ? "materia_prima" : cartItem.type} | Vendedor: ${salesperson.name} | Produto: ${cartItem.name} | Qtd: ${cartItem.quantity} unidades | Preço Unit: ${formatCurrency(cartItem.unitPrice)} | Método: A PRAZO | ID_Produto: ${cartItem.originalProductId} | Valor_Original: ${cartItem.totalPrice} | Status: PENDENTE`,
+              description: `TIPO_PRODUTO: ${cartItem.type === "resale" ? "revenda" : cartItem.type === "material" ? "materia_prima" : cartItem.type} | Vendedor: ${salesperson.name} | Produto: ${cartItem.name} | Qtd: ${cartItem.quantity} ${unitLabel} | Preço Unit: ${formatCurrency(cartItem.unitPrice)} | Método: A PRAZO | ID_Produto: ${cartItem.originalProductId} | Valor_Original: ${cartItem.totalPrice} | Status: PENDENTE`,
               transaction_date: todayLocal,
             });
 
@@ -2608,9 +2615,13 @@ const SalesDashboard = ({
         const stockItem = stockItems.find(
           (item) => item.id === productInfo.productId
         );
-        const productName = stockItem
-          ? stockItem.item_name
-          : `Produto ${productInfo.productId}`;
+        // Nome vem da descrição da venda; fallback: item de estoque; por último, o id.
+        const nameFromDesc = (sale.description || "").match(/Produto:\s*([^|]+)/);
+        const productName = nameFromDesc
+          ? nameFromDesc[1].trim()
+          : stockItem
+            ? stockItem.item_name
+            : `Produto ${productInfo.productId}`;
 
         if (!productSalesMap.has(productName)) {
           productSalesMap.set(productName, {
@@ -2700,9 +2711,14 @@ const SalesDashboard = ({
         const resaleProduct = resaleProducts.find(
           (product) => product.id === productInfo.productId
         );
-        const productName = resaleProduct
-          ? resaleProduct.name
-          : `Produto ${productInfo.productId}`;
+        // Nome vem da descrição da venda (sempre presente e fiel ao que foi vendido);
+        // fallback: produto de revenda atual; por último, o id.
+        const nameFromDesc = (sale.description || "").match(/Produto:\s*([^|]+)/);
+        const productName = nameFromDesc
+          ? nameFromDesc[1].trim()
+          : resaleProduct
+            ? resaleProduct.name
+            : `Produto ${productInfo.productId}`;
 
         if (!productSalesMap.has(productName)) {
           productSalesMap.set(productName, {

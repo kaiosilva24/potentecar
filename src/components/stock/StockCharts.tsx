@@ -255,6 +255,8 @@ interface StockChartsProps {
   stockItems?: StockItem[];
   productType?: "all" | "final" | "resale";
   isLoading?: boolean;
+  // Rateio de despesas/perdas por pneu (absorção) — para valorizar finais a custo CHEIO
+  overheadPorPneu?: number;
 }
 
 const StockCharts = ({
@@ -264,6 +266,7 @@ const StockCharts = ({
   stockItems = [],
   productType = "all",
   isLoading = false,
+  overheadPorPneu = 0,
 }: StockChartsProps) => {
   // Inicializar custos padrão de pneus na primeira renderização
   useEffect(() => {
@@ -515,8 +518,12 @@ const StockCharts = ({
       );
 
       const quantity = stockItem?.quantity || 0;
-      const unitCost = stockItem?.unit_cost || 0;
-      const totalValue = stockItem?.total_value || quantity * unitCost;
+      // Custo CHEIO (absorção): material (total_value/qtd, base do Dashboard) + overhead.
+      const materialValue =
+        stockItem?.total_value || quantity * (stockItem?.unit_cost || 0);
+      const materialUnit = quantity > 0 ? materialValue / quantity : 0;
+      const unitCost = materialUnit + overheadPorPneu;
+      const totalValue = materialValue + overheadPorPneu * quantity;
 
       // Calcular nível de estoque
       const minLevel = stockItem?.min_level || 0;
@@ -897,30 +904,13 @@ const StockCharts = ({
       let unitCost = 0;
 
       if (displayType === "final") {
-        // Para produtos finais, tentar usar a lógica do TireCostManager primeiro
-        const costPerTire = getSpecificCost(product.name);
-
-        if (costPerTire > 0) {
-          // Se encontrou custo específico, usar ele
-          totalValue = quantity * costPerTire;
-          unitCost = costPerTire;
-        } else {
-          // Se não encontrou custo específico, usar dados do stockItem como fallback
-          totalValue = stockItem?.total_value || 0;
-          unitCost = stockItem?.unit_cost || 0;
-
-          console.log(
-            `🔄 [StockCharts] Usando fallback para produto final: ${product.name}`,
-            {
-              productId: product.id,
-              quantity,
-              stockItemTotalValue: stockItem?.total_value,
-              stockItemUnitCost: stockItem?.unit_cost,
-              calculatedTotalValue: totalValue,
-              calculatedUnitCost: unitCost,
-            }
-          );
-        }
+        // Custo CHEIO (absorção): material (total_value/qtd, base do Dashboard) + overhead.
+        // Consistente com o Dashboard/Estoque; sem localStorage.
+        const materialValue =
+          stockItem?.total_value || quantity * (stockItem?.unit_cost || 0);
+        const materialUnit = quantity > 0 ? materialValue / quantity : 0;
+        unitCost = materialUnit + overheadPorPneu;
+        totalValue = materialValue + overheadPorPneu * quantity;
       } else {
         // Para produtos de revenda, usar valores reais do estoque
         totalValue = stockItem?.total_value || 0;
