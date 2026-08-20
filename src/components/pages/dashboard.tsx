@@ -3375,7 +3375,9 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
                   {isLoadingRawMaterialUnitaryQuantity ? (
                     <span className="animate-pulse">Carregando...</span>
                   ) : (
-                    rawMaterialUnitaryQuantity
+                    Math.round(
+                      Number(rawMaterialUnitaryQuantity) || 0
+                    ).toLocaleString("pt-BR")
                   )}
                 </p>
               </div>

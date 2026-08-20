@@ -203,6 +203,24 @@ const TireCostManager = ({
   } = useCostSimulations();
   const [selectedProduct, setSelectedProduct] = useState("");
   const [monthlyProduction, setMonthlyProduction] = useState("1000");
+
+  // ✅ Custo Médio por Pneu CANÔNICO (mesma fonte do Dashboard): custo de material
+  // no estoque = Σ(valor dos produtos finais) ÷ Σ(quantidade). Substitui a fórmula
+  // antiga de absorção que divergia do painel.
+  const canonicalCustoMedioPneu = useMemo(() => {
+    const prods = (stockItems || []).filter(
+      (s: any) => s.item_type === "product"
+    );
+    const val = prods.reduce(
+      (a: number, s: any) => a + (Number(s.total_value) || 0),
+      0
+    );
+    const qty = prods.reduce(
+      (a: number, s: any) => a + (Number(s.quantity) || 0),
+      0
+    );
+    return qty > 0 ? val / qty : 0;
+  }, [stockItems]);
   const [analysisMode, setAnalysisMode] = useState<"individual" | "average">(
     "individual"
   );
@@ -2992,13 +3010,16 @@ const TireCostManager = ({
                             )
                         : 0;
 
-                      return (
+                      // Ignora os componentes de absorção acima e usa o custo
+                      // canônico (material do estoque), igual ao Dashboard.
+                      void (
                         materialCost +
                         cashFlowCost +
                         lossCost +
                         defectiveCost +
                         warrantyCost
                       );
+                      return canonicalCustoMedioPneu;
                     })()
                   )}
                 </p>
