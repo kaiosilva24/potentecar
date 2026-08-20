@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
+import { computeFinancialMetrics } from "../../utils/financialMetrics";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -204,23 +205,17 @@ const TireCostManager = ({
   const [selectedProduct, setSelectedProduct] = useState("");
   const [monthlyProduction, setMonthlyProduction] = useState("1000");
 
-  // ✅ Custo Médio por Pneu CANÔNICO (mesma fonte do Dashboard): custo de material
-  // no estoque = Σ(valor dos produtos finais) ÷ Σ(quantidade). Substitui a fórmula
-  // antiga de absorção que divergia do painel.
-  const canonicalCustoMedioPneu = useMemo(() => {
-    const prods = (stockItems || []).filter(
-      (s: any) => s.item_type === "product"
-    );
-    const val = prods.reduce(
-      (a: number, s: any) => a + (Number(s.total_value) || 0),
-      0
-    );
-    const qty = prods.reduce(
-      (a: number, s: any) => a + (Number(s.quantity) || 0),
-      0
-    );
-    return qty > 0 ? val / qty : 0;
-  }, [stockItems]);
+  // ✅ Custo Médio por Pneu CANÔNICO = custo CHEIO por absorção (material + rateio
+  // de despesas + perdas), MESMA fonte do Dashboard (computeFinancialMetrics).
+  const canonicalCustoMedioPneu = useMemo(
+    () =>
+      computeFinancialMetrics({
+        stockItems: stockItems as any,
+        cashFlowEntries: cashFlowEntries as any,
+        productionEntries: productionEntries as any,
+      }).custoAbsorcaoPorPneu,
+    [stockItems, cashFlowEntries, productionEntries]
+  );
   const [analysisMode, setAnalysisMode] = useState<"individual" | "average">(
     "individual"
   );

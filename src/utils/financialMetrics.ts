@@ -54,7 +54,14 @@ export interface FinancialMetrics {
   valorEmpresarial: number;
   // Quantidades / unitários
   qtdProdutosFinais: number;
-  custoMedioPorPneu: number;
+  custoMedioPorPneu: number; // custo de MATERIAL médio no estoque
+  // Custo CHEIO (absorção): material + rateio de despesas + perdas
+  custoAbsorcaoPorPneu: number;
+  overheadPorPneu: number; // (despesas + perdas) ÷ produção
+  totalProduzido: number;
+  valorPerdas: number;
+  // Estoque de produtos finais avaliado a custo CHEIO (absorção)
+  saldoProdutosFinaisAbsorcao: number;
   // DRE (resultado realizado)
   receitaVendas: number;
   cogs: number;
@@ -214,6 +221,7 @@ export function computeFinancialMetrics(
     cashFlowEntries: CashFlowEntryLike[];
     resaleProducts?: ResaleProductLike[];
     debts?: DebtLike[];
+    productionEntries?: any[];
   },
   options: ComputeOptions = {}
 ): FinancialMetrics {
@@ -221,6 +229,7 @@ export function computeFinancialMetrics(
   const cashFlow = input.cashFlowEntries || [];
   const resaleIds = new Set((input.resaleProducts || []).map((p) => p.id));
   const debts = input.debts || [];
+  const productionEntries = input.productionEntries || [];
 
   // --- Balanço (sempre estado atual) ---
   const materials = stockItems.filter((s) => s.item_type === "material");
@@ -248,19 +257,39 @@ export function computeFinancialMetrics(
     return paid ? a : a + num(d.amount);
   }, 0);
 
-  const valorEmpresarial =
-    saldoCaixa +
-    saldoMateriaPrima +
-    saldoProdutosFinais +
-    saldoProdutosRevenda -
-    totalDividas;
+  // Total produzido (base do rateio de absorção)
+  const totalProduzido = productionEntries.reduce(
+    (a, e) => a + num(e.quantity_produced),
+    0
+  );
 
   // --- DRE (realizado, com filtro de período opcional) ---
   const stockById = new Map(stockItems.map((s) => [s.id, s]));
   const productByItemId = new Map<string, StockItemLike>();
+  const productByName = new Map<string, StockItemLike>();
+  const materialByItemId = new Map<string, StockItemLike>();
   for (const s of stockItems) {
-    if (s.item_type === "product") productByItemId.set(s.item_id, s);
+    if (s.item_type === "product") {
+      productByItemId.set(s.item_id, s);
+      productByName.set((s.item_name || "").trim().toLowerCase(), s);
+    }
+    if (s.item_type === "material") materialByItemId.set(s.item_id, s);
   }
+
+  // Valor das PERDAS (pneus perdidos × custo material do produto + perdas de material)
+  const valorPerdas = productionEntries.reduce((a, e) => {
+    let v = 0;
+    const prod = productByName.get((e.product_name || "").trim().toLowerCase());
+    const prodCost = prod ? num(prod.unit_cost) : 0;
+    v += num(e.production_loss) * prodCost;
+    if (Array.isArray(e.material_loss)) {
+      for (const ml of e.material_loss) {
+        const mat = materialByItemId.get(ml.material_id);
+        v += num(ml.quantity_lost) * (mat ? num(mat.unit_cost) : 0);
+      }
+    }
+    return a + v;
+  }, 0);
 
   const inPeriod = (e: CashFlowEntryLike): boolean => {
     if (!options.from && !options.to) return true;
@@ -327,6 +356,24 @@ export function computeFinancialMetrics(
     (a, [, v]) => a + v,
     0
   );
+
+  // --- CUSTO POR ABSORÇÃO (custo CHEIO por pneu) ---
+  // custo cheio = material médio + (despesas operacionais + perdas) ÷ produção.
+  // Válido quando calculado sobre TODO o histórico (sem filtro de período).
+  const overheadPorPneu =
+    totalProduzido > 0
+      ? (despesasOperacionais + valorPerdas) / totalProduzido
+      : 0;
+  const custoAbsorcaoPorPneu = custoMedioPorPneu + overheadPorPneu;
+  const saldoProdutosFinaisAbsorcao = qtdProdutosFinais * custoAbsorcaoPorPneu;
+  // Valor Empresarial avalia os produtos finais a custo CHEIO (absorção)
+  const valorEmpresarial =
+    saldoCaixa +
+    saldoMateriaPrima +
+    saldoProdutosFinaisAbsorcao +
+    saldoProdutosRevenda -
+    totalDividas;
+
   const lucroBruto = receitaVendas - cogs;
   const lucroLiquido = lucroBruto - despesasOperacionais;
   const margemBruta = receitaVendas > 0 ? (lucroBruto / receitaVendas) * 100 : 0;
@@ -348,6 +395,11 @@ export function computeFinancialMetrics(
     valorEmpresarial,
     qtdProdutosFinais,
     custoMedioPorPneu,
+    custoAbsorcaoPorPneu,
+    overheadPorPneu,
+    totalProduzido,
+    valorPerdas,
+    saldoProdutosFinaisAbsorcao,
     receitaVendas,
     cogs,
     lucroBruto,

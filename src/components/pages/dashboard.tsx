@@ -608,8 +608,9 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
         cashFlowEntries: cashFlowEntries as any,
         resaleProducts: resaleProducts as any,
         debts: debts as any,
+        productionEntries: productionEntries as any,
       }),
-    [stockItems, cashFlowEntries, resaleProducts, debts]
+    [stockItems, cashFlowEntries, resaleProducts, debts, productionEntries]
   );
 
   // FASE 3: Dados menos críticos (carregamento diferido)
@@ -3261,7 +3262,7 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
                   finalProductStockBalance === null ? (
                     <span className="animate-pulse">Carregando...</span>
                   ) : (
-                    formatCurrency(fin.saldoProdutosFinais)
+                    formatCurrency(fin.saldoProdutosFinaisAbsorcao)
                   )}
                 </p>
               </div>
@@ -3306,7 +3307,7 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
                   Custo Médio por Pneu
                 </p>
                 <p className="text-2xl font-bold text-tire-200">
-                  {formatCurrency(fin.custoMedioPorPneu)}
+                  {formatCurrency(fin.custoAbsorcaoPorPneu)}
                 </p>
               </div>
               <div className="p-2 rounded-full bg-blue-500/20">

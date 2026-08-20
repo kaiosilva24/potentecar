@@ -35,6 +35,7 @@ import {
   useCashFlow,
   useResaleProducts,
   useDebts,
+  useProductionEntries,
 } from "../../hooks/useDataPersistence";
 import { computeFinancialMetrics } from "../../utils/financialMetrics";
 import { useAuth } from "../../../supabase/auth";
@@ -59,6 +60,7 @@ const SettingsDashboard = ({
   const { cashFlowEntries } = useCashFlow();
   const { resaleProducts } = useResaleProducts();
   const { debts } = useDebts();
+  const { productionEntries } = useProductionEntries();
   const fin = useMemo(
     () =>
       computeFinancialMetrics({
@@ -66,8 +68,9 @@ const SettingsDashboard = ({
         cashFlowEntries: cashFlowEntries as any,
         resaleProducts: resaleProducts as any,
         debts: debts as any,
+        productionEntries: productionEntries as any,
       }),
-    [stockItems, cashFlowEntries, resaleProducts, debts]
+    [stockItems, cashFlowEntries, resaleProducts, debts, productionEntries]
   );
 
   // Estados para exportar/importar
