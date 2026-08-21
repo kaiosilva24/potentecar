@@ -2141,7 +2141,7 @@ export const useCostCalculationOptions = () => {
           );
         }
       }
-    }, 1000); // Check every second
+    }, 5000); // Verifica a cada 5s (era 1s: pesado com N telas montadas)
 
     return () => {
       window.removeEventListener("storage", handleStorageChange);

@@ -301,7 +301,7 @@ const SalesDashboard = ({
     );
 
   // Filter final product sales history (cash flow entries with category "venda" or "venda_prazo" and product type "final")
-  const finalProductSalesHistory = cashFlowEntries
+  const finalProductSalesHistory = useMemo(() => cashFlowEntries
     .filter(
       (entry) =>
         entry.type === "income" &&
@@ -444,10 +444,16 @@ const SalesDashboard = ({
       (a, b) =>
         new Date(b.transaction_date).getTime() -
         new Date(a.transaction_date).getTime()
-    );
+    ), [
+    cashFlowEntries,
+    salesHistorySearch,
+    salesHistoryDateType,
+    salesHistoryStartDate,
+    salesHistoryEndDate,
+  ]);
 
   // Filter resale product sales history (cash flow entries with category "venda" or "venda_prazo" and product type "resale" or "materia_prima")
-  const resaleProductSalesHistory = cashFlowEntries
+  const resaleProductSalesHistory = useMemo(() => cashFlowEntries
     .filter(
       (entry) =>
         entry.type === "income" &&
@@ -582,7 +588,13 @@ const SalesDashboard = ({
       (a, b) =>
         new Date(b.transaction_date).getTime() -
         new Date(a.transaction_date).getTime()
-    );
+    ), [
+    cashFlowEntries,
+    resaleSalesHistorySearch,
+    resaleSalesHistoryDateType,
+    resaleSalesHistoryStartDate,
+    resaleSalesHistoryEndDate,
+  ]);
 
   // Filter warranty history
   const filteredWarrantyEntries = warrantyEntries

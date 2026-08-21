@@ -162,16 +162,8 @@
     background-position: center;
     background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, no-repeat,
       repeat, repeat, no-repeat;
-    animation: auroraDrift 26s ease-in-out infinite alternate;
-  }
-
-  @keyframes auroraDrift {
-    0% {
-      background-position: 49.4% 50.6%;
-    }
-    100% {
-      background-position: 50.6% 49.4%;
-    }
+    /* Sem animação de background-position: repintava a viewport inteira a cada
+       frame (drift imperceptível). Fundo estático mantém o visual sem custo. */
   }
 
   .holographic {

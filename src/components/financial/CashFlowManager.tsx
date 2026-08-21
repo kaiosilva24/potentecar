@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -451,7 +451,7 @@ const CashFlowManager = ({
     }).format(value);
   };
 
-  const filteredEntries = cashFlowEntries.filter((entry) => {
+  const filteredEntries = useMemo(() => cashFlowEntries.filter((entry) => {
     const matchesSearch =
       entry.reference_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (entry.description &&
@@ -578,7 +578,16 @@ const CashFlowManager = ({
     }
 
     return matchesSearch && matchesType && matchesDate && matchesCategory;
-  });
+  }), [
+    cashFlowEntries,
+    searchTerm,
+    filterType,
+    filterCategories,
+    dateFilterType,
+    filterMonth,
+    customStartDate,
+    customEndDate,
+  ]);
 
   const totalIncome = filteredEntries
     .filter((entry) => entry.type === "income")

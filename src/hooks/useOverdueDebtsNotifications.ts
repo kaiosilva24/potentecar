@@ -59,7 +59,7 @@ export const useOverdueDebtsNotifications = () => {
     checkOverdueDebts();
 
     // Set up interval to check every 30 seconds
-    const interval = setInterval(checkOverdueDebts, 30000);
+    const interval = setInterval(checkOverdueDebts, 180000); // 3 min (badge)
 
     // Listen for debt updates
     const handleDebtUpdate = () => {

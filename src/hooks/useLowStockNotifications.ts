@@ -152,7 +152,7 @@ export const useLowStockNotifications = () => {
 
     const interval = setInterval(() => {
       checkLowStock();
-    }, 30000); // Check every 30 seconds
+    }, 180000); // A cada 3 min (badge; era 30s puxando 4 tabelas)
 
     return () => clearInterval(interval);
   }, []);

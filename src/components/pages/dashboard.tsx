@@ -1,20 +1,36 @@
-import React, { useState, useEffect, useMemo, useCallback, memo } from "react";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  memo,
+  lazy,
+  Suspense,
+} from "react";
 import TopNavigation from "../dashboard/layout/TopNavigation";
 import Sidebar from "../dashboard/layout/Sidebar";
-import DashboardGrid from "../dashboard/DashboardGrid";
-import TaskBoard from "../dashboard/TaskBoard";
-import FinancialDashboard from "../financial/FinancialDashboard";
-import RegistrationDashboard from "../registration/RegistrationDashboard";
-import StockDashboard from "../stock/StockDashboard";
-import ProductionDashboard from "../production/ProductionDashboard";
-import SalesDashboard from "../sales/SalesDashboard";
-import RelatorioGeral from "../reports/RelatorioGeral";
-import DataDiagnostic from "../debug/DataDiagnostic";
-import TireCostDebug from "../debug/TireCostDebug";
-import AuthPerformanceDebug from "../debug/AuthPerformanceDebug";
-import PerformanceAuditDebug from "../debug/PerformanceAuditDebug";
-import TireCostInitializationDebug from "../debug/TireCostInitializationDebug";
-import TireCostFixTest from "../debug/TireCostFixTest";
+// Seções carregadas sob demanda (code-splitting) — reduz o boot inicial.
+const FinancialDashboard = lazy(() => import("../financial/FinancialDashboard"));
+const RegistrationDashboard = lazy(
+  () => import("../registration/RegistrationDashboard")
+);
+const StockDashboard = lazy(() => import("../stock/StockDashboard"));
+const ProductionDashboard = lazy(
+  () => import("../production/ProductionDashboard")
+);
+const SalesDashboard = lazy(() => import("../sales/SalesDashboard"));
+const RelatorioGeral = lazy(() => import("../reports/RelatorioGeral"));
+const SettingsDashboard = lazy(() => import("../settings/SettingsDashboard"));
+const DataDiagnostic = lazy(() => import("../debug/DataDiagnostic"));
+const TireCostDebug = lazy(() => import("../debug/TireCostDebug"));
+const AuthPerformanceDebug = lazy(() => import("../debug/AuthPerformanceDebug"));
+const PerformanceAuditDebug = lazy(
+  () => import("../debug/PerformanceAuditDebug")
+);
+const TireCostInitializationDebug = lazy(
+  () => import("../debug/TireCostInitializationDebug")
+);
+const TireCostFixTest = lazy(() => import("../debug/TireCostFixTest"));
 import StockCharts from "../stock/StockCharts";
 import ProductionChart from "../stock/ProductionChart";
 import potentCarLogo from "../../assets/potente-car.png";
@@ -28,11 +44,8 @@ import { supabase } from "../../../supabase/supabase";
 import { initializeDefaultTireCosts } from "../../utils/defaultTireCosts";
 import "../../utils/testTireCostFix"; // Importar função de teste global
 import PresumedProfitManager from "../financial/PresumedProfitManager";
-import ResaleProductProfitManager from "../financial/ResaleProductProfitManager";
-import TireCostManager from "../financial/TireCostManager";
 import FinalProductsStock from "../stock/FinalProductsStock";
 import ResaleProductsStock from "../stock/ResaleProductsStock";
-import SettingsDashboard from "../settings/SettingsDashboard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -3555,7 +3568,7 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
               ) : (
                 <div className="w-full h-full min-h-[350px]">
                   <StockCharts
-                    key={`main-dashboard-stock-charts-${resaleDataVersion}-${stockItems.length}`}
+                    key={`main-dashboard-stock-charts-${resaleDataVersion}`}
                     materials={materials || []}
                     products={products || []}
                     resaleProducts={resaleProducts || []}
@@ -3956,6 +3969,13 @@ const Home = () => {
               "transition-all duration-300 ease-in-out"
             )}
           >
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center py-20">
+                  <div className="h-8 w-8 rounded-full border-2 border-neon-blue border-t-transparent animate-spin" />
+                </div>
+              }
+            >
             {activeSection === "dashboard" && (
               <MainDashboard isLoading={loading} />
             )}
@@ -4000,6 +4020,7 @@ const Home = () => {
                 <DataDiagnostic />
               </div>
             )}
+            </Suspense>
           </div>
         </main>
       </div>
