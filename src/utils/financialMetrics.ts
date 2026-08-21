@@ -70,6 +70,7 @@ export interface FinancialMetrics {
   despesasOperacionais: number;
   despesasPorCategoria: Record<string, number>;
   comprasFornecedores: number;
+  retiradasDono: number; // retiradas do dono (reduzem caixa, fora do DRE)
   lucroLiquido: number;
   margemLiquida: number;
   lucroMedioPorPneu: number;
@@ -158,7 +159,8 @@ export function computeProfitSeries(
       byDay[d].cogs += cogsOf(e.description || "");
     } else if (
       e.type === "expense" &&
-      !SUPPLIER_CATEGORIES.includes(e.category || "")
+      !SUPPLIER_CATEGORIES.includes(e.category || "") &&
+      !OWNER_WITHDRAWAL_CATEGORIES.includes(e.category || "")
     ) {
       byDay[d].opex += amt;
     }
@@ -221,6 +223,9 @@ const OPERATING_EXPENSE_CATEGORIES = [
   "Vendedores",
 ];
 const SUPPLIER_CATEGORIES = ["Fornecedores"];
+// Retirada do dono (distribuição/pró-labore): reduz o CAIXA mas NÃO é despesa
+// operacional — não entra no rateio do custo por pneu nem no lucro operacional.
+const OWNER_WITHDRAWAL_CATEGORIES = ["Retirada do Dono"];
 
 export interface ComputeOptions {
   /** Filtra o DRE por período (inclusive). Balanço/estoque é sempre o atual. */
@@ -337,6 +342,7 @@ export function computeFinancialMetrics(
   let qtdMateriaPrimaVendida = 0;
   const despesasPorCategoria: Record<string, number> = {};
   let comprasFornecedores = 0;
+  let retiradasDono = 0;
 
   for (const e of cashFlow) {
     if (!inPeriod(e)) continue;
@@ -367,6 +373,10 @@ export function computeFinancialMetrics(
       const cat = e.category || "(sem categoria)";
       if (SUPPLIER_CATEGORIES.includes(cat)) {
         comprasFornecedores += amt;
+      } else if (OWNER_WITHDRAWAL_CATEGORIES.includes(cat)) {
+        // Retirada do dono: reduz o caixa (já contado em saldoCaixa), mas NÃO
+        // é despesa operacional → não afeta custo por pneu nem lucro operacional.
+        retiradasDono += amt;
       } else {
         despesasPorCategoria[cat] = (despesasPorCategoria[cat] || 0) + amt;
       }
@@ -451,6 +461,7 @@ export function computeFinancialMetrics(
     despesasOperacionais,
     despesasPorCategoria,
     comprasFornecedores,
+    retiradasDono,
     lucroLiquido,
     margemLiquida,
     lucroMedioPorPneu,

@@ -363,7 +363,10 @@ const CashFlowManager = ({
   const handleCategoryChange = (newCategory: string) => {
     setCategory(newCategory);
     setReferenceId("");
-    setReferenceName("");
+    // Retirada do dono não tem "pagar para" — já preenche um padrão editável
+    setReferenceName(
+      newCategory === "owner_withdrawal" ? "Retirada do Dono" : ""
+    );
   };
 
   const handleReferenceChange = (value: string) => {
@@ -405,6 +408,8 @@ const CashFlowManager = ({
     { value: "fixed_costs", label: "Custos Fixos", data: fixedCosts },
     { value: "variable_costs", label: "Custos Variáveis", data: variableCosts },
     { value: "debts", label: "Dívidas", data: debts }, // Categoria para pagamento de dívidas com dados reais
+    // Retirada do dono: reduz o caixa mas NÃO entra no custo por pneu (ver financialMetrics)
+    { value: "owner_withdrawal", label: "Retirada do Dono", data: [] },
   ];
 
   const getIncomeCategories = () => [
@@ -1172,8 +1177,29 @@ const CashFlowManager = ({
                 </div>
               )}
 
+              {/* Retirada do dono — sem lista de "pagar para", descrição livre */}
+              {type === "expense" && category === "owner_withdrawal" && (
+                <div className="space-y-2">
+                  <Label className="text-tire-300">Descrição da retirada *</Label>
+                  <Input
+                    type="text"
+                    value={referenceName}
+                    onChange={(e) => setReferenceName(e.target.value)}
+                    className="bg-factory-700/50 border-tire-600/30 text-white placeholder:text-tire-400"
+                    placeholder="Ex: Retirada do dono, pró-labore..."
+                    required
+                  />
+                  <p className="text-xs text-tire-500">
+                    Reduz o saldo do caixa. Não afeta o custo por pneu nem o
+                    lucro operacional.
+                  </p>
+                </div>
+              )}
+
               {/* Reference selection for expenses (based on category) */}
-              {type === "expense" && category && (
+              {type === "expense" &&
+                category &&
+                category !== "owner_withdrawal" && (
                 <div className="space-y-2">
                   <Label className="text-tire-300">Pagar para *</Label>
                   <Select
