@@ -75,6 +75,19 @@ export interface FinancialMetrics {
   lucroMedioPorPneu: number;
   lucroMedioRevenda: number;
   qtdPneusVendidos: number;
+  // Quebra da receita por tipo de venda (no período do DRE)
+  receitaFinal: number;
+  cogsFinal: number;
+  lucroFinal: number;
+  receitaRevenda: number;
+  cogsRevenda: number;
+  lucroRevenda: number;
+  qtdRevendaVendida: number;
+  receitaMateriaPrima: number;
+  cogsMateriaPrima: number;
+  lucroMateriaPrima: number;
+  qtdMateriaPrimaVendida: number;
+  lucroMedioMateriaPrima: number;
   // auditoria
   vendasSemCusto: number;
 }
@@ -319,6 +332,9 @@ export function computeFinancialMetrics(
   let receitaRevenda = 0;
   let cogsRevenda = 0;
   let qtdRevendaVendida = 0;
+  let receitaMateriaPrima = 0;
+  let cogsMateriaPrima = 0;
+  let qtdMateriaPrimaVendida = 0;
   const despesasPorCategoria: Record<string, number> = {};
   let comprasFornecedores = 0;
 
@@ -338,6 +354,11 @@ export function computeFinancialMetrics(
           receitaRevenda += amt;
           cogsRevenda += cost;
           qtdRevendaVendida += qtdItem;
+        }
+        if (tipo === "materia_prima") {
+          receitaMateriaPrima += amt;
+          cogsMateriaPrima += cost;
+          qtdMateriaPrimaVendida += qtdItem;
         }
       } else {
         vendasSemCusto += 1;
@@ -385,8 +406,31 @@ export function computeFinancialMetrics(
       ? (receitaRevenda - cogsRevenda) / qtdRevendaVendida
       : 0;
 
+  // Quebra por tipo de venda (final = total − revenda − matéria-prima)
+  const lucroRevenda = receitaRevenda - cogsRevenda;
+  const lucroMateriaPrima = receitaMateriaPrima - cogsMateriaPrima;
+  const receitaFinal = receitaVendas - receitaRevenda - receitaMateriaPrima;
+  const cogsFinal = cogs - cogsRevenda - cogsMateriaPrima;
+  const lucroFinal = receitaFinal - cogsFinal;
+  const lucroMedioMateriaPrima =
+    qtdMateriaPrimaVendida > 0
+      ? lucroMateriaPrima / qtdMateriaPrimaVendida
+      : 0;
+
   return {
     lucroMedioRevenda,
+    receitaFinal,
+    cogsFinal,
+    lucroFinal,
+    receitaRevenda,
+    cogsRevenda,
+    lucroRevenda,
+    qtdRevendaVendida,
+    receitaMateriaPrima,
+    cogsMateriaPrima,
+    lucroMateriaPrima,
+    qtdMateriaPrimaVendida,
+    lucroMedioMateriaPrima,
     saldoCaixa,
     saldoMateriaPrima,
     saldoProdutosFinais,

@@ -15,6 +15,7 @@ import {
   ChevronRight,
   DollarSign,
   LogOut,
+  FileBarChart,
 } from "lucide-react";
 import potentCarLogo from "../../../assets/potente-car.png";
 import { useLowStockNotifications } from "../../../hooks/useLowStockNotifications";
@@ -46,6 +47,7 @@ const defaultNavItems: NavItem[] = [
   { icon: <Calendar size={20} />, label: "Produção" },
   { icon: <ShoppingCart size={20} />, label: "Vendas" },
   { icon: <Users size={20} />, label: "Cadastros" },
+  { icon: <FileBarChart size={20} />, label: "Relatório Geral" },
 ];
 
 const defaultBottomItems: NavItem[] = [

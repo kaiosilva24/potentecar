@@ -8,6 +8,7 @@ import RegistrationDashboard from "../registration/RegistrationDashboard";
 import StockDashboard from "../stock/StockDashboard";
 import ProductionDashboard from "../production/ProductionDashboard";
 import SalesDashboard from "../sales/SalesDashboard";
+import RelatorioGeral from "../reports/RelatorioGeral";
 import DataDiagnostic from "../debug/DataDiagnostic";
 import TireCostDebug from "../debug/TireCostDebug";
 import AuthPerformanceDebug from "../debug/AuthPerformanceDebug";
@@ -99,9 +100,19 @@ const EmpresarialProfitChart = ({
   stockItems = [],
   resaleProducts = [],
 }: EmpresarialProfitChartProps) => {
-  const [dateFilter, setDateFilter] = useState("30"); // Mensal (30 dias) por padrão
+  const [dateFilter, setDateFilter] = useState("thisMonth"); // Este mês (dia 1 → hoje) por padrão
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
+
+  // Intervalo do "Este mês" = dia 1 do mês atual até hoje (YYYY-MM-DD)
+  const thisMonthRange = () => {
+    const now = new Date();
+    const p = (n: number) => String(n).padStart(2, "0");
+    return {
+      from: `${now.getFullYear()}-${p(now.getMonth() + 1)}-01`,
+      to: `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`,
+    };
+  };
 
   // ✅ LUCRO REALIZADO (Receita − COGS − Despesas) — série diária do banco.
   // Substitui o antigo mecanismo de "baseline" (que nunca era confirmado).
@@ -116,6 +127,9 @@ const EmpresarialProfitChart = ({
         from: customStartDate,
         to: customEndDate,
       });
+    }
+    if (dateFilter === "thisMonth") {
+      return computeProfitSeries(data, thisMonthRange());
     }
     return computeProfitSeries(data, parseInt(dateFilter) || 30);
   }, [
@@ -181,7 +195,10 @@ const EmpresarialProfitChart = ({
         "📊 [EmpresarialProfitChart] Carregando dados históricos de lucro empresarial..."
       );
 
-      const days = parseInt(dateFilter);
+      const days =
+        dateFilter === "thisMonth"
+          ? new Date().getDate() // dia 1 → hoje
+          : parseInt(dateFilter) || 30;
       // Carregar dados históricos reais do banco de dados
       const historicalData = await dataManager.loadBusinessValueHistory(days);
 
@@ -384,6 +401,7 @@ const EmpresarialProfitChart = ({
                 onChange={(e) => setDateFilter(e.target.value)}
                 className="bg-factory-700/50 border border-tire-600/30 text-white rounded px-3 py-1 text-sm"
               >
+                <option value="thisMonth">Este mês</option>
                 <option value="7">Últimos 7 dias</option>
                 <option value="15">Últimos 15 dias</option>
                 <option value="30">Últimos 30 dias</option>
@@ -3434,6 +3452,54 @@ const MainDashboard = ({ isLoading = false }: { isLoading?: boolean }) => {
             </div>
           </CardContent>
         </Card>
+
+        {/* Card 10 - Vendas de Matéria-Prima (total acumulado) */}
+        <Card className="bg-factory-800/50 border-emerald-600/30 hover:shadow-lg transition-all duration-200">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-tire-300 text-sm font-medium">
+                  Vendas de Matéria-Prima
+                </p>
+                <p className="text-2xl font-bold text-green-400">
+                  {formatCurrency(fin.receitaMateriaPrima)}
+                </p>
+                <p className="text-xs text-tire-400 mt-1">
+                  {Math.round(fin.qtdMateriaPrimaVendida).toLocaleString(
+                    "pt-BR"
+                  )}{" "}
+                  un · lucro {formatCurrency(fin.lucroMateriaPrima)}
+                </p>
+              </div>
+              <div className="p-2 rounded-full bg-emerald-500/20">
+                <Factory className="h-5 w-5 text-emerald-400" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Card 11 - Vendas de Produtos Revenda (total acumulado) */}
+        <Card className="bg-factory-800/50 border-emerald-600/30 hover:shadow-lg transition-all duration-200">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-tire-300 text-sm font-medium">
+                  Vendas de Produtos Revenda
+                </p>
+                <p className="text-2xl font-bold text-green-400">
+                  {formatCurrency(fin.receitaRevenda)}
+                </p>
+                <p className="text-xs text-tire-400 mt-1">
+                  {Math.round(fin.qtdRevendaVendida).toLocaleString("pt-BR")} un
+                  · lucro {formatCurrency(fin.lucroRevenda)}
+                </p>
+              </div>
+              <div className="p-2 rounded-full bg-emerald-500/20">
+                <ShoppingBag className="h-5 w-5 text-emerald-400" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Combined Charts Section - Carregamento Secundário */}
@@ -3656,6 +3722,7 @@ const Home = () => {
       Produção: "production",
       Cadastros: "registrations",
       Vendas: "sales",
+      "Relatório Geral": "reports",
       Settings: "settings", // Mapeamento correto para o valor "Settings" que vem da sidebar
       Configurações: "settings", // Adicional para compatibilidade
       Debug: "debug", // Seção de debug para testes
@@ -3851,7 +3918,9 @@ const Home = () => {
                       ? "Vendas"
                       : activeSection === "settings"
                         ? "Configurações" // Adicionado caso para Configurações
-                        : "Cadastros"
+                        : activeSection === "reports"
+                          ? "Relatório Geral"
+                          : "Cadastros"
           }
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -3914,6 +3983,9 @@ const Home = () => {
             )}
             {activeSection === "sales" && (
               <SalesDashboard isLoading={loading} onRefresh={handleRefresh} />
+            )}
+            {activeSection === "reports" && (
+              <RelatorioGeral isLoading={loading} onRefresh={handleRefresh} />
             )}
             {activeSection === "settings" && ( // Renderiza SettingsDashboard quando activeSection for "settings"
               <SettingsDashboard onRefresh={() => window.location.reload()} />

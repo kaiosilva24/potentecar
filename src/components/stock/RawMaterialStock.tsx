@@ -498,7 +498,9 @@ const RawMaterialStock = ({
               <div>
                 <p className="text-tire-300 text-sm">Matéria Prima Unitária</p>
                 <p className="text-2xl font-bold text-neon-orange">
-                  {metrics.unitaryMaterialsQuantity}
+                  {Math.round(
+                    Number(metrics.unitaryMaterialsQuantity) || 0
+                  ).toLocaleString("pt-BR")}
                 </p>
                 <p className="text-xs text-tire-400 mt-1">
                   {metrics.unitaryMaterialsInStock} tipos em estoque

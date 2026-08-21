@@ -12,6 +12,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import {
   Plus,
   Search,
   ArrowUpCircle,
@@ -88,7 +95,8 @@ const CashFlowManager = ({
   const [dateFilterType, setDateFilterType] = useState("all");
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
-  const [filterCategory, setFilterCategory] = useState("all_categories");
+  // Multi-seleção de categorias (vazio = todas)
+  const [filterCategories, setFilterCategories] = useState<string[]>([]);
 
   // Estado para transações expandidas
   const [expandedTransactions, setExpandedTransactions] = useState<Set<string>>(
@@ -450,11 +458,12 @@ const CashFlowManager = ({
         entry.description.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesType = filterType === "all" || entry.type === filterType;
     const matchesCategory =
-      !filterCategory ||
-      filterCategory === "all_categories" ||
-      entry.category === filterCategory ||
-      (filterCategory === "Venda" &&
-        entry.category.toLowerCase().includes("venda"));
+      filterCategories.length === 0 ||
+      filterCategories.some(
+        (c) =>
+          entry.category === c ||
+          (c === "Venda" && entry.category.toLowerCase().includes("venda"))
+      );
 
     // Advanced date filtering with proper timezone handling
     let matchesDate = true;
@@ -589,7 +598,7 @@ const CashFlowManager = ({
     setDateFilterType("all");
     setCustomStartDate("");
     setCustomEndDate("");
-    setFilterCategory("all_categories");
+    setFilterCategories([]);
   };
 
   // Utility function to extract product info from sale description
@@ -1013,7 +1022,7 @@ const CashFlowManager = ({
     filterMonth ||
     customStartDate ||
     customEndDate ||
-    (filterCategory && filterCategory !== "all_categories");
+    filterCategories.length > 0;
 
   return (
     <div className="w-full max-w-7xl mx-auto p-6 bg-factory-900/90 backdrop-blur-md rounded-2xl border border-tire-700/30">
@@ -1604,34 +1613,63 @@ const CashFlowManager = ({
                     </Select>
                   </div>
 
-                  {/* Filtro de Categoria */}
+                  {/* Filtro de Categoria (multi-seleção) */}
                   <div className="space-y-2">
                     <Label className="text-tire-300 text-sm">Categoria:</Label>
-                    <Select
-                      value={filterCategory}
-                      onValueChange={setFilterCategory}
-                    >
-                      <SelectTrigger className="bg-factory-700/50 border-tire-600/30 text-white">
-                        <SelectValue placeholder="Todas as categorias" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-factory-800 border-tire-600/30">
-                        <SelectItem
-                          value="all_categories"
-                          className="text-white hover:bg-tire-700/50"
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="flex h-10 w-full items-center justify-between rounded-md border border-tire-600/30 bg-factory-700/50 px-3 py-2 text-sm text-white ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                        >
+                          <span
+                            className={
+                              filterCategories.length === 0
+                                ? "text-tire-400"
+                                : "text-white"
+                            }
+                          >
+                            {filterCategories.length === 0
+                              ? "Todas as categorias"
+                              : filterCategories.length === 1
+                                ? filterCategories[0]
+                                : `${filterCategories.length} categorias`}
+                          </span>
+                          <ChevronDown className="h-4 w-4 opacity-50" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent
+                        align="start"
+                        className="max-h-72 w-56 overflow-y-auto bg-factory-800 border-tire-600/30"
+                      >
+                        <DropdownMenuCheckboxItem
+                          checked={filterCategories.length === 0}
+                          onCheckedChange={() => setFilterCategories([])}
+                          onSelect={(e) => e.preventDefault()}
+                          className="text-white focus:bg-tire-700/50 focus:text-white"
                         >
                           Todas as categorias
-                        </SelectItem>
+                        </DropdownMenuCheckboxItem>
+                        <DropdownMenuSeparator className="bg-tire-600/30" />
                         {getAllCategories().map((category) => (
-                          <SelectItem
+                          <DropdownMenuCheckboxItem
                             key={category}
-                            value={category}
-                            className="text-white hover:bg-tire-700/50"
+                            checked={filterCategories.includes(category)}
+                            onCheckedChange={(checked) =>
+                              setFilterCategories((prev) =>
+                                checked
+                                  ? [...prev, category]
+                                  : prev.filter((c) => c !== category)
+                              )
+                            }
+                            onSelect={(e) => e.preventDefault()}
+                            className="text-white focus:bg-tire-700/50 focus:text-white"
                           >
                             {category}
-                          </SelectItem>
+                          </DropdownMenuCheckboxItem>
                         ))}
-                      </SelectContent>
-                    </Select>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
 
                   {/* Período */}
@@ -1763,12 +1801,26 @@ const CashFlowManager = ({
                         {dateFilterType === "custom" && "Período personalizado"}
                       </div>
                     )}
-                    {filterCategory && filterCategory !== "all_categories" && (
-                      <div className="flex items-center gap-1 px-2 py-1 bg-orange-500/20 rounded text-orange-300 text-xs">
+                    {filterCategories.map((cat) => (
+                      <div
+                        key={cat}
+                        className="flex items-center gap-1 px-2 py-1 bg-orange-500/20 rounded text-orange-300 text-xs"
+                      >
                         <Filter className="h-3 w-3" />
-                        Categoria: {filterCategory}
+                        {cat}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFilterCategories((prev) =>
+                              prev.filter((c) => c !== cat)
+                            )
+                          }
+                          className="ml-1 hover:text-white"
+                        >
+                          ×
+                        </button>
                       </div>
-                    )}
+                    ))}
                   </div>
                 )}
               </div>
