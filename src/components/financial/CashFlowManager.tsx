@@ -75,7 +75,7 @@ const CashFlowManager = ({
   isLoading = false,
 }: CashFlowManagerProps) => {
   const { t } = useTranslation();
-  const { stockItems, updateStockItem } = useStockItems();
+  const { stockItems, adjustStockItem } = useStockItems();
   const { resaleProducts } = useResaleProducts();
   const { debts } = useDebts();
   const [type, setType] = useState<"income" | "expense">("expense");
@@ -625,9 +625,9 @@ const CashFlowManager = ({
       productIdMatch = description.match(/PRODUTO_ID: ([^|]+)/);
     }
 
-    let quantityMatch = description.match(/Qtd: (\d+)/);
+    let quantityMatch = description.match(/Qtd: ([0-9.]+)/);
     if (!quantityMatch) {
-      quantityMatch = description.match(/QUANTIDADE: (\d+)/);
+      quantityMatch = description.match(/QUANTIDADE: ([0-9.]+)/);
     }
 
     console.log("🔍 [FINANCIAL DELETE] Matches encontrados:", {
@@ -638,7 +638,7 @@ const CashFlowManager = ({
     if (productIdMatch && quantityMatch) {
       const result = {
         productId: productIdMatch[1].trim(),
-        quantity: parseInt(quantityMatch[1]),
+        quantity: parseFloat(quantityMatch[1]),
       };
       console.log(
         "✅ [FINANCIAL DELETE] Produto extraído com sucesso:",
@@ -765,11 +765,10 @@ const CashFlowManager = ({
                     }
                   );
 
-                  await updateStockItem(stockItem.id, {
-                    quantity: newQuantity,
-                    total_value: newTotalValue,
-                    last_updated: new Date().toISOString(),
-                  });
+                  const updatedMaterial = await adjustStockItem(
+                    stockItem.id,
+                    productInfo.quantity
+                  );
 
                   console.log(
                     "✅✅✅ [FINANCIAL DELETE] ESTOQUE DE MATÉRIA-PRIMA RESTAURADO COM SUCESSO! ✅✅✅"
@@ -784,7 +783,7 @@ const CashFlowManager = ({
                         productName: stockItem.item_name,
                         operation: "restore",
                         itemType: "material",
-                        newQuantity: newQuantity,
+                        newQuantity: updatedMaterial?.quantity ?? newQuantity,
                         timestamp: new Date().toISOString(),
                       },
                     })
@@ -847,11 +846,7 @@ const CashFlowManager = ({
                     }
                   );
 
-                  await updateStockItem(stockItem.id, {
-                    quantity: newQuantity,
-                    total_value: newTotalValue,
-                    last_updated: new Date().toISOString(),
-                  });
+                  await adjustStockItem(stockItem.id, productInfo.quantity);
 
                   console.log(
                     "✅ [FINANCIAL DELETE] Estoque de produto de revenda restaurado com sucesso!"
@@ -906,11 +901,7 @@ const CashFlowManager = ({
                     }
                   );
 
-                  await updateStockItem(stockItem.id, {
-                    quantity: newQuantity,
-                    total_value: newTotalValue,
-                    last_updated: new Date().toISOString(),
-                  });
+                  await adjustStockItem(stockItem.id, productInfo.quantity);
 
                   console.log(
                     "✅ [FINANCIAL DELETE] Estoque de produto final restaurado com sucesso!"

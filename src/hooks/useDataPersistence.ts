@@ -697,6 +697,34 @@ export const useStockItems = () => {
     return updatedStockItem;
   };
 
+  // Variação relativa (entrada +, saída −) aplicada sobre o valor ATUAL do banco.
+  const adjustStockItem = async (
+    id: string,
+    delta: number,
+    opts: { unitCostForIncoming?: number } = {}
+  ) => {
+    setIsSaving(true);
+    try {
+      const updated = await dataManager.adjustStockQuantity(id, delta, opts);
+      if (updated) {
+        setStockItems((prev) => prev.map((s) => (s.id === id ? updated : s)));
+        window.dispatchEvent(
+          new CustomEvent("stockItemsUpdated", {
+            detail: {
+              timestamp: Date.now(),
+              source: "useStockItems-adjustStockItem",
+              action: "UPDATE",
+              item: updated,
+            },
+          })
+        );
+      }
+      return updated;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const removeStockItemByItemId = async (itemId: string) => {
     console.log(
       `🗑️ [useStockItems] Removendo item do estoque por item_id: ${itemId}`
@@ -784,6 +812,7 @@ export const useStockItems = () => {
     addStockItem,
     createStockItem,
     updateStockItem,
+    adjustStockItem,
     removeStockItemByItemId,
     loadStockItems,
     isLoading,

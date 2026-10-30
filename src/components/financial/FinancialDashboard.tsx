@@ -95,7 +95,7 @@ const FinancialDashboard = ({
   const { resaleProducts, isLoading: resaleProductsLoading } =
     useResaleProducts();
   const { debts, updateDebt, refreshDebts } = useDebts();
-  const { updateStockItem } = useStockItems();
+  const { adjustStockItem } = useStockItems();
 
   // Enhanced wrapper handler for cash flow entries with debt payment integration
   const handleAddCashFlowEntry = async (
@@ -353,11 +353,7 @@ const FinancialDashboard = ({
                 newTotalValue: newTotalValue,
               });
 
-              await updateStockItem(stockItem.id, {
-                quantity: newQuantity,
-                total_value: newTotalValue,
-                last_updated: new Date().toISOString(),
-              });
+              const updated = await adjustStockItem(stockItem.id, quantity);
 
               console.log(
                 "✅ [FinancialDashboard] Estoque de produto de revenda restaurado com sucesso!"
@@ -371,7 +367,7 @@ const FinancialDashboard = ({
                     productId: productId,
                     productName: stockItem.item_name,
                     operation: "restore",
-                    newQuantity: newQuantity,
+                    newQuantity: updated?.quantity ?? newQuantity,
                     timestamp: new Date().toISOString(),
                   },
                 })

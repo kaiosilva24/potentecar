@@ -75,7 +75,7 @@ const ProductionDashboard = ({
   const {
     stockItems,
     addStockItem,
-    updateStockItem,
+    adjustStockItem,
     isLoading: stockLoading,
   } = useStockItems();
 
@@ -127,65 +127,19 @@ const ProductionDashboard = ({
       });
 
       if (existingStock) {
-        // Update existing stock item
-        let newQuantity: number;
-        let newUnitCost = existingStock.unit_cost;
-
-        if (operation === "add") {
-          newQuantity = existingStock.quantity + quantity;
-          // Calculate weighted average cost if adding with a price
-          if (unitPrice && unitPrice > 0) {
-            const currentTotalValue =
-              existingStock.quantity * existingStock.unit_cost;
-            const newTotalValue = quantity * unitPrice;
-            newUnitCost = (currentTotalValue + newTotalValue) / newQuantity;
-          }
-        } else {
-          // Remove operation
-          newQuantity = Math.max(0, existingStock.quantity - quantity);
-        }
+        const delta = operation === "add" ? quantity : -quantity;
 
         console.log(`📝 [ProductionDashboard] Atualizando item existente:`, {
           itemName: existingStock.item_name,
           oldQuantity: existingStock.quantity,
-          newQuantity,
+          delta,
           operation,
           quantityChange: quantity,
         });
 
-        const updateData = {
-          quantity: newQuantity,
-          unit_cost: newUnitCost,
-          total_value: newQuantity * newUnitCost,
-          last_updated: new Date().toISOString(),
-        };
-
-        console.log(
-          `🔧 [ProductionDashboard] Dados preparados para updateStockItem:`,
-          {
-            updateData,
-            existingStockId: existingStock.id,
-            operation,
-            quantityChange: quantity,
-          }
-        );
-
-        console.log(
-          `🔧 [ProductionDashboard] Dados preparados para updateStockItem:`,
-          {
-            stockItemId: existingStock.id,
-            stockItemName: existingStock.item_name,
-            currentQuantity: existingStock.quantity,
-            updateData,
-            operation,
-            quantityChange: quantity,
-          }
-        );
-
-        const updateResult = await updateStockItem(
-          existingStock.id,
-          updateData
-        );
+        const updateResult = await adjustStockItem(existingStock.id, delta, {
+          unitCostForIncoming: operation === "add" ? unitPrice : undefined,
+        });
 
         if (!updateResult) {
           throw new Error(

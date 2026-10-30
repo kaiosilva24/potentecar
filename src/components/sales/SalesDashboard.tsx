@@ -223,7 +223,7 @@ const SalesDashboard = ({
   } = useCustomers();
   const {
     stockItems,
-    updateStockItem,
+    adjustStockItem,
     isLoading: stockLoading,
   } = useStockItems();
   const {
@@ -1096,14 +1096,13 @@ const SalesDashboard = ({
         });
 
         // Update stock - subtract warranty quantity
-        const newQuantity = product.quantity - parseFloat(quantity);
-        const newTotalValue = newQuantity * product.unit_cost;
-
-        await updateStockItem(product.id, {
-          quantity: newQuantity,
-          total_value: newTotalValue,
-          last_updated: new Date().toISOString(),
-        });
+        const updatedWarrantyStock = await adjustStockItem(
+          product.id,
+          -parseFloat(quantity)
+        );
+        const newQuantity =
+          updatedWarrantyStock?.quantity ??
+          product.quantity - parseFloat(quantity);
 
         // Não criar entrada de produção para garantias
         // As garantias são registradas apenas na tabela warranty_entries
@@ -1204,14 +1203,14 @@ const SalesDashboard = ({
           }
 
           // Update stock - subtract sold quantity
-          const newQuantity = product.quantity - parseFloat(quantity);
-          const newTotalValue = newQuantity * product.unit_cost;
-
-          await updateStockItem(product.id, {
-            quantity: newQuantity,
-            total_value: newTotalValue,
-            last_updated: new Date().toISOString(),
-          });
+          const updatedFinalStock = await adjustStockItem(
+            product.id,
+            -parseFloat(quantity)
+          );
+          const newQuantity =
+            updatedFinalStock?.quantity ??
+            product.quantity - parseFloat(quantity);
+          const newTotalValue = updatedFinalStock?.total_value;
 
           console.log(
             `✅ [SalesDashboard] Estoque de produto final atualizado:`,
@@ -1286,14 +1285,14 @@ const SalesDashboard = ({
             }
 
             // Update raw material stock
-            const newQuantity = rawMaterial.quantity - parseFloat(quantity);
-            const newTotalValue = newQuantity * rawMaterial.unit_cost;
-
-            await updateStockItem(rawMaterial.id, {
-              quantity: newQuantity,
-              total_value: newTotalValue,
-              last_updated: new Date().toISOString(),
-            });
+            const updatedMaterialStock = await adjustStockItem(
+              rawMaterial.id,
+              -parseFloat(quantity)
+            );
+            const newQuantity =
+              updatedMaterialStock?.quantity ??
+              rawMaterial.quantity - parseFloat(quantity);
+            const newTotalValue = updatedMaterialStock?.total_value;
 
             console.log(
               `✅ [SalesDashboard] Estoque de matéria-prima atualizado:`,
@@ -1403,14 +1402,14 @@ const SalesDashboard = ({
             });
 
             if (stockItem) {
-              const newQuantity = stockItem.quantity - parseFloat(quantity);
-              const newTotalValue = newQuantity * stockItem.unit_cost;
-
-              await updateStockItem(stockItem.id, {
-                quantity: newQuantity,
-                total_value: newTotalValue,
-                last_updated: new Date().toISOString(),
-              });
+              const updatedResaleStock = await adjustStockItem(
+                stockItem.id,
+                -parseFloat(quantity)
+              );
+              const newQuantity =
+                updatedResaleStock?.quantity ??
+                stockItem.quantity - parseFloat(quantity);
+              const newTotalValue = updatedResaleStock?.total_value;
 
               console.log(
                 `✅ [SalesDashboard] Estoque de produto de revenda atualizado:`,
@@ -1627,14 +1626,7 @@ const SalesDashboard = ({
             (p) => p.id === cartItem.originalProductId
           );
           if (product) {
-            const newQuantity = product.quantity - cartItem.quantity;
-            const newTotalValue = newQuantity * product.unit_cost;
-
-            await updateStockItem(product.id, {
-              quantity: newQuantity,
-              total_value: newTotalValue,
-              last_updated: new Date().toISOString(),
-            });
+            await adjustStockItem(product.id, -cartItem.quantity);
           }
         } else if (cartItem.type === "resale") {
           const stockItem = stockItems.find(
@@ -1643,14 +1635,7 @@ const SalesDashboard = ({
               item.item_type === "product"
           );
           if (stockItem) {
-            const newQuantity = stockItem.quantity - cartItem.quantity;
-            const newTotalValue = newQuantity * stockItem.unit_cost;
-
-            await updateStockItem(stockItem.id, {
-              quantity: newQuantity,
-              total_value: newTotalValue,
-              last_updated: new Date().toISOString(),
-            });
+            await adjustStockItem(stockItem.id, -cartItem.quantity);
           }
         } else if (cartItem.type === "material") {
           // Material/raw material sale - update stock from raw_materials (which are in stock_items)
@@ -1658,14 +1643,13 @@ const SalesDashboard = ({
             (m) => m.id === cartItem.originalProductId
           );
           if (rawMaterial) {
-            const newQuantity = rawMaterial.quantity - cartItem.quantity;
-            const newTotalValue = newQuantity * rawMaterial.unit_cost;
-
-            await updateStockItem(rawMaterial.id, {
-              quantity: newQuantity,
-              total_value: newTotalValue,
-              last_updated: new Date().toISOString(),
-            });
+            const updatedMaterialStock = await adjustStockItem(
+              rawMaterial.id,
+              -cartItem.quantity
+            );
+            const newQuantity =
+              updatedMaterialStock?.quantity ??
+              rawMaterial.quantity - cartItem.quantity;
 
             console.log(
               `✅ [MULTI-PRODUCT] Estoque de matéria-prima atualizado:`,
@@ -1692,14 +1676,13 @@ const SalesDashboard = ({
             });
 
             // Update stock - subtract warranty quantity
-            const newQuantity = product.quantity - cartItem.quantity;
-            const newTotalValue = newQuantity * product.unit_cost;
-
-            await updateStockItem(product.id, {
-              quantity: newQuantity,
-              total_value: newTotalValue,
-              last_updated: new Date().toISOString(),
-            });
+            const updatedWarrantyStock = await adjustStockItem(
+              product.id,
+              -cartItem.quantity
+            );
+            const newQuantity =
+              updatedWarrantyStock?.quantity ??
+              product.quantity - cartItem.quantity;
 
             // Não criar entrada de produção para garantias
             // As garantias são registradas apenas na tabela warranty_entries
@@ -1887,11 +1870,10 @@ const SalesDashboard = ({
           }
 
           // Update stock quantity (usar o id da LINHA de estoque, não o ID_Produto)
-          await updateStockItem(stockItem.id, {
-            quantity: newStockQuantity,
-            total_value: newStockQuantity * stockItem.unit_cost,
-            last_updated: new Date().toISOString(),
-          });
+          const quantityDelta = originalQuantity - newQuantity;
+          if (quantityDelta !== 0) {
+            await adjustStockItem(stockItem.id, quantityDelta);
+          }
         }
       }
 
@@ -2132,7 +2114,7 @@ const SalesDashboard = ({
 
                 if (stockItem) {
                   // Return quantity to stock_items
-                  const newQuantity = stockItem.quantity + productInfo.quantity;
+                  let newQuantity = stockItem.quantity + productInfo.quantity;
                   const newTotalValue = newQuantity * stockItem.unit_cost;
 
                   console.log(
@@ -2155,11 +2137,11 @@ const SalesDashboard = ({
                   });
 
                   try {
-                    await updateStockItem(stockItem.id, {
-                      quantity: newQuantity,
-                      total_value: newTotalValue,
-                      last_updated: new Date().toISOString(),
-                    });
+                    const updatedMaterialStock = await adjustStockItem(
+                      stockItem.id,
+                      productInfo.quantity
+                    );
+                    newQuantity = updatedMaterialStock?.quantity ?? newQuantity;
 
                     console.log(
                       "✅✅✅ [DELETE SALE] ESTOQUE DE MATÉRIA-PRIMA RESTAURADO COM SUCESSO! ✅✅✅"
@@ -2251,7 +2233,7 @@ const SalesDashboard = ({
 
                 if (stockItem) {
                   // Return quantity to stock_items
-                  const newQuantity = stockItem.quantity + productInfo.quantity;
+                  let newQuantity = stockItem.quantity + productInfo.quantity;
                   const newTotalValue = newQuantity * stockItem.unit_cost;
 
                   console.log("🔥 [DELETE SALE] Atualizando estoque revenda:", {
@@ -2262,11 +2244,11 @@ const SalesDashboard = ({
                     newTotalValue: newTotalValue,
                   });
 
-                  await updateStockItem(stockItem.id, {
-                    quantity: newQuantity,
-                    total_value: newTotalValue,
-                    last_updated: new Date().toISOString(),
-                  });
+                  const restoredStock = await adjustStockItem(
+                    stockItem.id,
+                    productInfo.quantity
+                  );
+                  newQuantity = restoredStock?.quantity ?? newQuantity;
 
                   console.log(
                     "✅ [DELETE SALE] Estoque de produto de revenda restaurado com sucesso!"
@@ -2321,7 +2303,7 @@ const SalesDashboard = ({
 
                 if (stockItem) {
                   // Return quantity to stock
-                  const newQuantity = stockItem.quantity + productInfo.quantity;
+                  let newQuantity = stockItem.quantity + productInfo.quantity;
                   const newTotalValue = newQuantity * stockItem.unit_cost;
 
                   console.log("🔥 [DELETE SALE] Atualizando estoque final:", {
@@ -2332,11 +2314,11 @@ const SalesDashboard = ({
                     newTotalValue: newTotalValue,
                   });
 
-                  await updateStockItem(stockItem.id, {
-                    quantity: newQuantity,
-                    total_value: newTotalValue,
-                    last_updated: new Date().toISOString(),
-                  });
+                  const restoredStock = await adjustStockItem(
+                    stockItem.id,
+                    productInfo.quantity
+                  );
+                  newQuantity = restoredStock?.quantity ?? newQuantity;
 
                   console.log(
                     "✅ [DELETE SALE] Estoque de produto final restaurado com sucesso!"
@@ -2516,14 +2498,13 @@ const SalesDashboard = ({
 
           if (stockItem) {
             // Return quantity to stock
-            const newQuantity = stockItem.quantity + warranty.quantity;
-            const newTotalValue = newQuantity * stockItem.unit_cost;
-
-            await updateStockItem(stockItem.id, {
-              quantity: newQuantity,
-              total_value: newTotalValue,
-              last_updated: new Date().toISOString(),
-            });
+            const restoredStock = await adjustStockItem(
+              stockItem.id,
+              warranty.quantity
+            );
+            const newQuantity =
+              restoredStock?.quantity ?? stockItem.quantity + warranty.quantity;
+            const newTotalValue = restoredStock?.total_value;
 
             console.log(
               `✅ [SalesDashboard] Estoque restaurado após exclusão de garantia:`,

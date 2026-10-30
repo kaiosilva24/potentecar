@@ -68,6 +68,7 @@ const ResaleProductsStock = ({
   const {
     stockItems,
     updateStockItem,
+    adjustStockItem,
     createStockItem,
     isLoading: stockLoading,
   } = useStockItems();
@@ -308,11 +309,39 @@ const ResaleProductsStock = ({
           updateData,
         });
 
-        const result = await updateStockItem(product.stockId, updateData);
+        const delta =
+          stockOperation === "add" ? quantityValue : -quantityValue;
+        let result = await adjustStockItem(
+          product.stockId,
+          delta,
+          stockOperation === "add" && priceValue > 0
+            ? { unitCostForIncoming: priceValue }
+            : {}
+        );
 
         if (!result) {
           throw new Error("Falha ao atualizar item no banco de dados");
         }
+
+        if (stockOperation === "remove" && priceValue > 0) {
+          const dbTotalBefore =
+            (result.quantity + quantityValue) * (result.unit_cost || 0);
+          const correctedTotal = Math.max(
+            0,
+            dbTotalBefore - quantityValue * priceValue
+          );
+          const correctedUnitCost =
+            result.quantity > 0 ? correctedTotal / result.quantity : 0;
+          const corrected = await updateStockItem(product.stockId, {
+            unit_cost: correctedUnitCost,
+            total_value: result.quantity > 0 ? correctedTotal : 0,
+            last_updated: new Date().toISOString(),
+          });
+          if (corrected) result = corrected;
+        }
+
+        const savedQuantity = result.quantity;
+        const savedUnitCost = result.unit_cost || 0;
 
         console.log("✅ Estoque atualizado com sucesso");
 
@@ -349,9 +378,9 @@ const ResaleProductsStock = ({
               productId: product.id,
               productName: product.name,
               operation: stockOperation,
-              newQuantity,
-              newUnitCost,
-              newTotalValue: newQuantity * newUnitCost,
+              newQuantity: savedQuantity,
+              newUnitCost: savedUnitCost,
+              newTotalValue: savedQuantity * savedUnitCost,
               timestamp: new Date().toISOString(),
             },
           })

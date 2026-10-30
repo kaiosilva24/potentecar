@@ -3713,7 +3713,7 @@ const Home = () => {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [activeSection, setActiveSection] = useState("dashboard");
-  const { stockItems, updateStockItem, addStockItem, loadStockItems } =
+  const { stockItems, adjustStockItem, addStockItem, loadStockItems } =
     useStockItems(); // ✅ Usando Supabase em vez de localStorage
   const [isDiagnosticOpen, setIsDiagnosticOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -3811,41 +3811,12 @@ const Home = () => {
     );
 
     if (existingStock) {
-      // Preparar dados para atualização
-      let updateData: any = {
-        last_updated: new Date().toISOString(),
-      };
+      const delta = operation === "add" ? quantity : -quantity;
 
-      if (operation === "add") {
-        const newQuantity = existingStock.quantity + quantity;
-        let newUnitCost = existingStock.unit_cost;
-
-        // Calcular custo médio ponderado se adicionando com preço
-        if (unitPrice && unitPrice > 0) {
-          const currentTotalValue =
-            existingStock.quantity * existingStock.unit_cost;
-          const newTotalValue = quantity * unitPrice;
-          newUnitCost = (currentTotalValue + newTotalValue) / newQuantity;
-        }
-
-        updateData = {
-          ...updateData,
-          quantity: newQuantity,
-          unit_cost: newUnitCost,
-          total_value: newQuantity * newUnitCost,
-        };
-      } else if (operation === "remove") {
-        const newQuantity = Math.max(0, existingStock.quantity - quantity);
-        updateData = {
-          ...updateData,
-          quantity: newQuantity,
-          total_value: newQuantity * existingStock.unit_cost,
-        };
-      }
-
-      // Atualizar via hook do Supabase
       try {
-        await updateStockItem(existingStock.id, updateData);
+        await adjustStockItem(existingStock.id, delta, {
+          unitCostForIncoming: operation === "add" ? unitPrice : undefined,
+        });
         console.log(`✅ [Home] Estoque atualizado com sucesso via Supabase`);
 
         // Disparar evento para notificar outros componentes

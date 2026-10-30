@@ -553,6 +553,59 @@ export class DataManager {
     return this.loadFromDatabase<StockItem>("stock_items");
   }
 
+  // Soma `delta` à quantidade ATUAL do banco (compare-and-swap com retry).
+  // Evita perder alterações feitas em outra tela/aparelho enquanto esta tela
+  // estava com uma cópia antiga do estoque. Opcionalmente atualiza o custo
+  // unitário (ex.: entrada de produção com custo médio ponderado).
+  async adjustStockQuantity(
+    id: string,
+    delta: number,
+    opts: { unitCostForIncoming?: number } = {}
+  ): Promise<StockItem | null> {
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const { data: row, error } = await this.supabase
+        .from("stock_items")
+        .select("*")
+        .eq("id", id)
+        .single();
+      if (error || !row) {
+        throw new Error(
+          `Stock item ${id} não encontrado: ${error?.message || ""}`
+        );
+      }
+      const currentQty = Number(row.quantity) || 0;
+      const currentCost = Number(row.unit_cost) || 0;
+      const newQty = currentQty + delta;
+      let unitCost = currentCost;
+      const incomingCost = opts.unitCostForIncoming;
+      if (delta > 0 && incomingCost && incomingCost > 0) {
+        unitCost =
+          currentQty > 0 && currentCost > 0
+            ? (currentQty * currentCost + delta * incomingCost) / newQty
+            : incomingCost;
+      }
+      const baseQuery = this.supabase
+        .from("stock_items")
+        .update({
+          quantity: newQty,
+          unit_cost: unitCost,
+          total_value: newQty * unitCost,
+          last_updated: new Date().toISOString(),
+        })
+        .eq("id", id);
+      const { data: updated, error: updError } = await (row.quantity == null
+        ? baseQuery.is("quantity", null)
+        : baseQuery.eq("quantity", row.quantity)
+      ).select();
+      if (updError) throw updError;
+      if (updated && updated.length === 1) return updated[0] as StockItem;
+      await new Promise((r) => setTimeout(r, 50 + attempt * 50));
+    }
+    throw new Error(
+      `Não foi possível ajustar o estoque ${id}: alterações concorrentes`
+    );
+  }
+
   async updateStockItem(
     id: string,
     updates: Partial<StockItem>

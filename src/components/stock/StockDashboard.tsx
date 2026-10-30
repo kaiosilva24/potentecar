@@ -552,6 +552,7 @@ const StockDashboard = ({
     stockItems,
     isLoading: stockLoading,
     updateStockItem,
+    adjustStockItem,
     addStockItem,
   } = useStockItems();
   const { cashFlowEntries } = useCashFlow();
@@ -797,54 +798,22 @@ const StockDashboard = ({
     );
 
     if (existingStock) {
-      // Update existing stock item
+      // Update existing stock item (delta relativo ao valor ATUAL do banco)
       if (operation === "add") {
-        const newQuantity = existingStock.quantity + quantity;
-        let newUnitCost = existingStock.unit_cost;
-        let newTotalValue = existingStock.total_value;
+        const updated = await adjustStockItem(existingStock.id, quantity, {
+          unitCostForIncoming: unitPrice && unitPrice > 0 ? unitPrice : undefined,
+        });
+        const newQuantity = updated
+          ? updated.quantity
+          : existingStock.quantity + quantity;
 
-        // Calculate weighted average cost if adding with a price
-        if (unitPrice && unitPrice > 0) {
-          // ADICIONAR: Soma ao valor total existente e recalcula média ponderada
-          const currentTotalValue = existingStock.total_value;
-          const addedTotalValue = quantity * unitPrice;
-          newTotalValue = currentTotalValue + addedTotalValue;
-          newUnitCost = newTotalValue / newQuantity;
-
-          console.log(`➕ [StockDashboard] ADIÇÃO com preço:`, {
-            quantidadeAtual: existingStock.quantity,
-            valorTotalAtual: currentTotalValue,
-            quantidadeAdicionada: quantity,
-            precoUnitario: unitPrice,
-            valorAdicionado: addedTotalValue,
-            novaQuantidade: newQuantity,
-            novoValorTotal: newTotalValue,
-            novoCustoMedio: newUnitCost,
-          });
-        } else {
-          // Se não tem preço, mantém o custo unitário e recalcula o total
-          newTotalValue = newQuantity * newUnitCost;
-
-          console.log(
-            `➕ [StockDashboard] ADIÇÃO sem preço (mantém custo médio):`,
-            {
-              quantidadeAtual: existingStock.quantity,
-              quantidadeAdicionada: quantity,
-              novaQuantidade: newQuantity,
-              custoUnitarioMantido: newUnitCost,
-              novoValorTotal: newTotalValue,
-            }
-          );
-        }
-
-        const updateData = {
-          quantity: newQuantity,
-          unit_cost: newUnitCost,
-          total_value: newTotalValue,
-          last_updated: new Date().toISOString(),
-        };
-
-        await updateStockItem(existingStock.id, updateData);
+        console.log(`➕ [StockDashboard] ADIÇÃO:`, {
+          quantidadeAdicionada: quantity,
+          precoUnitario: unitPrice,
+          novaQuantidade: newQuantity,
+          novoCustoMedio: updated?.unit_cost,
+          novoValorTotal: updated?.total_value,
+        });
 
         // AJUSTAR BASELINE DO LUCRO EMPRESARIAL
         await StockBaselineManager.adjustBaselineOnAdd(
@@ -870,29 +839,27 @@ const StockDashboard = ({
         );
       } else {
         // REMOVE operation
-        const newQuantity = Math.max(0, existingStock.quantity - quantity);
-        let newUnitCost = existingStock.unit_cost;
-        let newTotalValue = existingStock.total_value;
+        const updated = await adjustStockItem(existingStock.id, -quantity);
+        const newQuantity = updated
+          ? updated.quantity
+          : Math.max(0, existingStock.quantity - quantity);
 
-        if (unitPrice && unitPrice > 0) {
+        if (updated && unitPrice && unitPrice > 0) {
           // REMOVER COM VALOR: Subtrai o valor informado e recalcula custo médio
-          const currentTotalValue = existingStock.total_value;
+          const previousTotalValue =
+            (updated.quantity + quantity) * (Number(updated.unit_cost) || 0);
           const removedTotalValue = quantity * unitPrice;
-          newTotalValue = Math.max(0, currentTotalValue - removedTotalValue);
-
-          // Recalcula custo médio com base no novo valor total
-          if (newQuantity > 0) {
-            newUnitCost = newTotalValue / newQuantity;
+          let newTotalValue = Math.max(0, previousTotalValue - removedTotalValue);
+          let newUnitCost = 0;
+          if (updated.quantity > 0) {
+            newUnitCost = newTotalValue / updated.quantity;
           } else {
-            newUnitCost = 0;
             newTotalValue = 0;
           }
 
           console.log(
             `➖ [StockDashboard] REMOÇÃO COM VALOR (recalcula custo médio):`,
             {
-              quantidadeAtual: existingStock.quantity,
-              valorTotalAtual: currentTotalValue,
               quantidadeRemovida: quantity,
               valorUnitarioInformado: unitPrice,
               valorRemovido: removedTotalValue,
@@ -901,40 +868,23 @@ const StockDashboard = ({
               novoCustoMedio: newUnitCost,
             }
           );
+
+          await updateStockItem(existingStock.id, {
+            unit_cost: newUnitCost,
+            total_value: newTotalValue,
+            last_updated: new Date().toISOString(),
+          });
         } else {
-          // REMOVER SEM VALOR: Usa custo médio atual
-          const currentTotalValue = existingStock.total_value;
-          const removedTotalValue = quantity * newUnitCost;
-          newTotalValue = Math.max(0, currentTotalValue - removedTotalValue);
-
-          if (newQuantity === 0) {
-            newUnitCost = 0;
-            newTotalValue = 0;
-          }
-
           console.log(
             `➖ [StockDashboard] REMOÇÃO SEM VALOR (usa custo médio):`,
             {
-              quantidadeAtual: existingStock.quantity,
-              valorTotalAtual: currentTotalValue,
-              custoMedioAtual: existingStock.unit_cost,
               quantidadeRemovida: quantity,
-              valorRemovido: removedTotalValue,
               novaQuantidade: newQuantity,
-              novoValorTotal: newTotalValue,
-              novoCustoMedio: newUnitCost,
+              custoMedioAtual: updated?.unit_cost,
+              novoValorTotal: updated?.total_value,
             }
           );
         }
-
-        const updateData = {
-          quantity: newQuantity,
-          unit_cost: newUnitCost,
-          total_value: newTotalValue,
-          last_updated: new Date().toISOString(),
-        };
-
-        await updateStockItem(existingStock.id, updateData);
 
         // AJUSTAR BASELINE DO LUCRO EMPRESARIAL
         await StockBaselineManager.adjustBaselineOnRemove(
