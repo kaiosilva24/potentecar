@@ -758,9 +758,11 @@ const FinalProductsStock: React.FC<FinalProductsStockProps> = ({
           valueDifference,
         });
 
+        // No banco o estoque fica a custo de MATERIAL (unit_cost); o custo cheio
+        // (com rateio) é só para exibição — gravá-lo inflava o total_value.
         await updateStockItem(stockItem.id, {
           quantity: product.editableQuantity,
-          total_value: newTotalValue,
+          total_value: product.editableQuantity * (Number(stockItem.unit_cost) || 0),
         });
 
         // AJUSTAR BASELINE DO LUCRO EMPRESARIAL COM A DIFERENÇA

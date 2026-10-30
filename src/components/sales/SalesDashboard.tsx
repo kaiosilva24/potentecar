@@ -80,6 +80,41 @@ const SalesDashboard = ({
 }: SalesDashboardProps) => {
   const [activeTab, setActiveTab] = useState("pos");
   const [productsSearch, setProductsSearch] = useState("");
+  // Históricos desenham só as N transações mais recentes (desenhar milhares de
+  // cartões de uma vez travava a tela). Busca/filtros/totais usam a lista toda.
+  const HISTORY_PAGE = 50;
+  const [historyLimits, setHistoryLimits] = useState<Record<string, number>>(
+    {}
+  );
+  const renderLimitedList = <T,>(
+    key: string,
+    items: T[],
+    renderItem: (item: T) => React.ReactNode
+  ) => {
+    const limit = historyLimits[key] ?? HISTORY_PAGE;
+    return (
+      <>
+        {items.slice(0, limit).map(renderItem)}
+        {items.length > limit && (
+          <div className="flex justify-center pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setHistoryLimits((prev) => ({
+                  ...prev,
+                  [key]: limit + HISTORY_PAGE,
+                }))
+              }
+              className="border-tire-600/40 text-tire-200 hover:bg-tire-700/50"
+            >
+              Mostrar mais ({items.length - limit} restantes)
+            </Button>
+          </div>
+        )}
+      </>
+    );
+  };
   const [salesHistorySearch, setSalesHistorySearch] = useState("");
   const [salesHistoryDateFilter, setSalesHistoryDateFilter] = useState("");
   const [salesHistoryDateType, setSalesHistoryDateType] = useState("all");
@@ -4959,7 +4994,7 @@ const SalesDashboard = ({
                           new Date(a.date).getTime()
                       );
 
-                    return sortedTransactions.map(
+                    return renderLimitedList("final", sortedTransactions, 
                       ({
                         key,
                         clientName,
@@ -5623,7 +5658,7 @@ const SalesDashboard = ({
                           new Date(a.date).getTime()
                       );
 
-                    return sortedTransactions.map(
+                    return renderLimitedList("resale", sortedTransactions, 
                       ({
                         key,
                         clientName,
@@ -6176,7 +6211,7 @@ const SalesDashboard = ({
                           new Date(a.date).getTime()
                       );
 
-                    return sortedTransactions.map(
+                    return renderLimitedList("warranty", sortedTransactions, 
                       ({
                         key,
                         clientName,

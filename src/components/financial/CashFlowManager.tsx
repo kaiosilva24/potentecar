@@ -93,6 +93,8 @@ const CashFlowManager = ({
   );
   const [filterMonth, setFilterMonth] = useState("");
   const [dateFilterType, setDateFilterType] = useState("all");
+  // Histórico desenha só as N transações mais recentes (milhares de cartões travavam a tela)
+  const [cashHistoryLimit, setCashHistoryLimit] = useState(50);
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
   // Multi-seleção de categorias (vazio = todas)
@@ -1978,7 +1980,9 @@ const CashFlowManager = ({
                     );
                   });
 
-                  return allTransactions.map((item) => {
+                  const cashRows = allTransactions
+                    .slice(0, cashHistoryLimit)
+                    .map((item) => {
                     if (item.isGroupedSale) {
                       // Renderizar venda agrupada
                       return (
@@ -2163,6 +2167,27 @@ const CashFlowManager = ({
                       );
                     }
                   });
+                  return (
+                    <>
+                      {cashRows}
+                      {allTransactions.length > cashHistoryLimit && (
+                        <div className="flex justify-center pt-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setCashHistoryLimit((n) => n + 50)
+                            }
+                            className="border-tire-600/40 text-tire-200 hover:bg-tire-700/50"
+                          >
+                            Mostrar mais (
+                            {allTransactions.length - cashHistoryLimit}{" "}
+                            restantes)
+                          </Button>
+                        </div>
+                      )}
+                    </>
+                  );
                 })()
               )}
             </div>

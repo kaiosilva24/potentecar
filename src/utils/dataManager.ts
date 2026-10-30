@@ -141,7 +141,78 @@ export class DataManager {
     }
   }
 
+  // Cargas em andamento por tabela: vários componentes que montam juntos e pedem
+  // a mesma tabela reaproveitam UMA requisição (só leitura; nada é cacheado após
+  // terminar, então a próxima chamada sempre busca dados frescos).
+  private inflightLoads = new Map<string, Promise<any[]>>();
+
   async loadFromDatabase<T>(tableName: string): Promise<T[]> {
+    const running = this.inflightLoads.get(tableName);
+    if (running) return running as Promise<T[]>;
+    const p = this.loadAllPages(tableName).finally(() => {
+      this.inflightLoads.delete(tableName);
+    });
+    this.inflightLoads.set(tableName, p);
+    return p as Promise<T[]>;
+  }
+
+  // Páginas de 1000 buscadas em PARALELO (antes: em série). Ordem estável
+  // (created_at, id) para não repetir/pular linhas entre páginas. Se algo falhar,
+  // cai no carregamento serial antigo.
+  private async loadAllPages(tableName: string): Promise<any[]> {
+    const pageSize = 1000;
+    const page = (from: number) =>
+      this.supabase
+        .from(tableName)
+        .select("*")
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, from + pageSize - 1);
+    try {
+      const first = await this.supabase
+        .from(tableName)
+        .select("*", { count: "exact" })
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(0, pageSize - 1);
+      if (first.error) throw first.error;
+      let all: any[] = first.data || [];
+      const total = first.count ?? all.length;
+      let lastLen = all.length;
+      if (lastLen === pageSize && total > pageSize) {
+        const offsets: number[] = [];
+        for (let f = pageSize; f < total; f += pageSize) offsets.push(f);
+        const results = await Promise.all(offsets.map(page));
+        for (const r of results) {
+          if (r.error) throw r.error;
+          all = all.concat(r.data || []);
+          lastLen = (r.data || []).length;
+        }
+      }
+      // Linhas inseridas durante a carga empurram as mais antigas para frente:
+      // continua em série até uma página vir incompleta.
+      let from = all.length;
+      while (lastLen === pageSize) {
+        const r = await page(from);
+        if (r.error) throw r.error;
+        all = all.concat(r.data || []);
+        lastLen = (r.data || []).length;
+        from += pageSize;
+      }
+      const seen = new Set<string>();
+      return all.filter((row) =>
+        row?.id == null ? true : seen.has(row.id) ? false : (seen.add(row.id), true)
+      );
+    } catch (parallelError) {
+      console.warn(
+        `⚠️ [DataManager] Carga paralela de ${tableName} falhou, usando serial:`,
+        parallelError
+      );
+      return this.loadFromDatabaseSerial(tableName);
+    }
+  }
+
+  private async loadFromDatabaseSerial(tableName: string): Promise<any[]> {
     try {
       // Paginação: o Supabase limita cada select a 1000 linhas. Sem isso, tabelas
       // grandes (cash_flow_entries, production_entries) vinham truncadas e TODAS as
@@ -169,7 +240,7 @@ export class DataManager {
         `✅ [DataManager] Dados carregados de ${tableName}:`,
         all.length
       );
-      return all as T[];
+      return all;
     } catch (error) {
       console.error(
         `❌ [DataManager] Erro ao carregar de ${tableName}:`,
