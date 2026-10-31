@@ -178,6 +178,13 @@ interface TireAnalysis {
   };
 }
 
+// Saída que entra no custo do pneu: tudo menos compra de matéria-prima (fornecedor)
+// e retirada do dono (distribuição, não é custo de produção).
+const despesaDoPneu = (entry: { type: string; category?: string | null }) =>
+  entry.type === "expense" &&
+  !(entry.category || "").toLowerCase().includes("fornecedor") &&
+  entry.category !== "Retirada do Dono";
+
 const TireCostManager = ({
   materials = [],
   employees = [],
@@ -1041,8 +1048,7 @@ const TireCostManager = ({
     const totalCashFlowExpenses = cashFlowEntries
       .filter(
         (entry) =>
-          entry.type === "expense" &&
-          !entry.category.toLowerCase().includes("fornecedor")
+          despesaDoPneu(entry)
       )
       .reduce((total, entry) => total + entry.amount, 0);
 
@@ -1162,8 +1168,7 @@ const TireCostManager = ({
           totalCashFlowExpenses: cashFlowEntries
             .filter(
               (entry) =>
-                entry.type === "expense" &&
-                !entry.category.toLowerCase().includes("fornecedor")
+                despesaDoPneu(entry)
             )
             .reduce((total, entry) => total + entry.amount, 0),
           totalProductionQuantity: productionQuantity,
@@ -1702,16 +1707,14 @@ const TireCostManager = ({
               ? cashFlowEntries
                   .filter(
                     (entry) =>
-                      entry.type === "expense" &&
-                      !entry.category.toLowerCase().includes("fornecedor")
+                      despesaDoPneu(entry)
                   )
                   .reduce((total, entry) => total + entry.amount, 0) /
                 averageAnalysis.totalProduced
               : cashFlowEntries
                   .filter(
                     (entry) =>
-                      entry.type === "expense" &&
-                      !entry.category.toLowerCase().includes("fornecedor")
+                      despesaDoPneu(entry)
                   )
                   .reduce((total, entry) => total + entry.amount, 0)
             : 0;
@@ -1832,16 +1835,14 @@ const TireCostManager = ({
               ? cashFlowEntries
                   .filter(
                     (entry) =>
-                      entry.type === "expense" &&
-                      !entry.category.toLowerCase().includes("fornecedor")
+                      despesaDoPneu(entry)
                   )
                   .reduce((total, entry) => total + entry.amount, 0) /
                 averageAnalysis.totalProduced
               : cashFlowEntries
                   .filter(
                     (entry) =>
-                      entry.type === "expense" &&
-                      !entry.category.toLowerCase().includes("fornecedor")
+                      despesaDoPneu(entry)
                   )
                   .reduce((total, entry) => total + entry.amount, 0)
             : 0;
@@ -1946,16 +1947,14 @@ const TireCostManager = ({
                 ? cashFlowEntries
                     .filter(
                       (entry) =>
-                        entry.type === "expense" &&
-                        !entry.category.toLowerCase().includes("fornecedor")
+                        despesaDoPneu(entry)
                     )
                     .reduce((total, entry) => total + entry.amount, 0) /
                   averageAnalysis.totalProduced
                 : cashFlowEntries
                     .filter(
                       (entry) =>
-                        entry.type === "expense" &&
-                        !entry.category.toLowerCase().includes("fornecedor")
+                        despesaDoPneu(entry)
                     )
                     .reduce((total, entry) => total + entry.amount, 0)
               : 0;
@@ -2937,10 +2936,7 @@ const TireCostManager = ({
                           ? cashFlowEntries
                               .filter(
                                 (entry) =>
-                                  entry.type === "expense" &&
-                                  !entry.category
-                                    .toLowerCase()
-                                    .includes("fornecedor")
+                                  despesaDoPneu(entry)
                               )
                               .reduce(
                                 (total, entry) => total + entry.amount,
@@ -2949,10 +2945,7 @@ const TireCostManager = ({
                           : cashFlowEntries
                               .filter(
                                 (entry) =>
-                                  entry.type === "expense" &&
-                                  !entry.category
-                                    .toLowerCase()
-                                    .includes("fornecedor")
+                                  despesaDoPneu(entry)
                               )
                               .reduce((total, entry) => total + entry.amount, 0)
                         : 0;
@@ -3775,10 +3768,7 @@ const TireCostManager = ({
                                           ? cashFlowEntries
                                               .filter(
                                                 (entry) =>
-                                                  entry.type === "expense" &&
-                                                  !entry.category
-                                                    .toLowerCase()
-                                                    .includes("fornecedor")
+                                                  despesaDoPneu(entry)
                                               )
                                               .reduce(
                                                 (total, entry) =>
@@ -3788,10 +3778,7 @@ const TireCostManager = ({
                                           : cashFlowEntries
                                               .filter(
                                                 (entry) =>
-                                                  entry.type === "expense" &&
-                                                  !entry.category
-                                                    .toLowerCase()
-                                                    .includes("fornecedor")
+                                                  despesaDoPneu(entry)
                                               )
                                               .reduce(
                                                 (total, entry) =>
@@ -3909,10 +3896,7 @@ const TireCostManager = ({
                                         cashFlowEntries
                                           .filter(
                                             (entry) =>
-                                              entry.type === "expense" &&
-                                              !entry.category
-                                                .toLowerCase()
-                                                .includes("fornecedor")
+                                              despesaDoPneu(entry)
                                           )
                                           .reduce(
                                             (total, entry) =>
